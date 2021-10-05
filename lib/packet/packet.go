@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"crypto/ed25519"
 	itsu_crpyto "example.com/itsuMain/lib/crpyto"
-	"example.com/itsuMain/lib/message"
 	"example.com/itsuMain/lib/util"
 	"io"
 )
@@ -100,15 +99,4 @@ func (packet *Packet) SignED25519(key ed25519.PrivateKey) (err error) {
 
 func (packet *Packet) VerifySignature() error {
 	return itsu_crpyto.VerifyClientSignature(packet.Data, packet.Signature, packet.SignatureType)
-}
-
-func (packet *Packet) VerifySignatureFull(m message.Msg, expectedToken uint64) (err error) {
-	if sm, ok := m.(message.SignedMessage); ok {
-		if sm.GetSignatureToken() != expectedToken {
-			return itsu_crpyto.ErrorClientSigBadToken
-		}
-		return packet.VerifySignature()
-	} else {
-		return itsu_crpyto.ErrorClientSigInternal
-	}
 }

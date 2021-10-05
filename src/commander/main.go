@@ -7,6 +7,7 @@ import (
 	"example.com/itsuMain/lib/message"
 	"example.com/itsuMain/lib/util"
 	"fmt"
+	g "github.com/AllenDang/giu"
 	"log"
 	"os"
 	"time"
@@ -36,8 +37,19 @@ func forceRequestSigToken(sess connection.Session) (token uint64) {
 	return
 }
 
+func loop() {
+	g.SingleWindow().Layout(
+		g.Label("Hello, world!"),
+		g.Row(
+			g.Label("testing "),
+			g.Label("123")))
+}
+
 func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
+
+	window := g.NewMasterWindow("Hello world", 400, 200, 0)
+	window.Run(loop)
 
 	if len(os.Args) != 1 {
 		if os.Args[1] == "genKeys" {
