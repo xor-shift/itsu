@@ -26,5 +26,5 @@ func main() {
 
 	log.Println(handshakeReply)
 
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 100)
 }
