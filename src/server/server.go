@@ -120,7 +120,33 @@ func (s *Server) NewClient(sess connection.Session) (c *Client, err error) {
 	}
 
 	c.threadsWG.Add(1)
-	go c.Main()
+	go c.Main(s)
+
+	return
+}
+
+func (s *Server) GetClientsList() (list []uint64) {
+	s.clientsMutex.RLock()
+	defer s.clientsMutex.RUnlock()
+
+	list = make([]uint64, len(s.clients))
+	i := 0
+	for k, _ := range s.clients {
+		list[i] = k
+		i++
+	}
+
+	return
+}
+
+func (s *Server) GetClient(id uint64) (c *Client) {
+	s.clientsMutex.RLock()
+	defer s.clientsMutex.RUnlock()
+
+	c, ok := s.clients[id]
+	if !ok {
+		c = nil
+	}
 
 	return
 }

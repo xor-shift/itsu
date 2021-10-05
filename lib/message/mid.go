@@ -1,7 +1,5 @@
 package message
 
-import "errors"
-
 type MessageID uint32
 
 const (
@@ -31,6 +29,11 @@ const (
 	MIDHandshakeRequest = midCat1 | 0
 	MIDTokenRequest     = midCat1 | 1
 
+	MIDClientsRequest     = midCat2 | 0
+	MIDClientQueryRequest = midCat2 | 1
+
+	MIDProxyRequestMessage = midCat4 | 0
+
 	//
 
 	MIDErrorBadRequest = midReplyBit | midCat7 | 0
@@ -45,6 +48,11 @@ const (
 	MIDHandshakeReply = midReplyBit | MIDHandshakeRequest
 	MIDTokenReply     = midReplyBit | MIDTokenRequest
 
+	MIDClientsReply     = midReplyBit | MIDClientsRequest
+	MIDClientQueryReply = midReplyBit | MIDClientQueryRequest
+
+	MIDProxyReplyMessage = midReplyBit | MIDProxyRequestMessage
+
 	//
 
 	MIDInvalid = MessageID(0xFFF)
@@ -55,11 +63,10 @@ type MIDProperties struct {
 }
 
 var (
-	ErrorUnexpectedMID = errors.New("unexpected MID")
-	ErrorUnknownMID    = errors.New("unknown MID")
-
 	MIDPropertyMap = map[MessageID]MIDProperties{
-		MIDSignedPingRequest: {true},
+		MIDSignedPingRequest:  {RequiresSignature: true},
+		MIDClientsRequest:     {RequiresSignature: true},
+		MIDClientQueryRequest: {RequiresSignature: true},
 	}
 )
 

@@ -8,7 +8,24 @@ import (
 	"time"
 )
 
+const (
+	connectionPeriod = time.Second * 2
+)
+
 func main() {
+	for {
+		mainFunc()
+		time.Sleep(connectionPeriod)
+	}
+}
+
+func mainFunc() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("Client recovered from panic:", r)
+		}
+	}()
+
 	var err error
 	var tMsg message.Msg
 
@@ -26,5 +43,6 @@ func main() {
 
 	log.Println(handshakeReply)
 
-	time.Sleep(time.Millisecond * 100)
+	//establised a connection, query for commands now
+
 }

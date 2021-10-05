@@ -17,8 +17,7 @@ var (
 	trustedClientKeys = map[SigType][]interface{}{
 		SigTypeNone: {},
 		SigTypeED25519: {
-			ed25519.PublicKey{57, 65, 106, 56, 54, 140, 122, 209, 148, 68, 14, 215, 170, 163, 181, 74, 211, 22, 159, 110, 67, 12, 248, 246, 221, 62, 223, 103, 216, 64, 144, 17},
-		},
+			ed25519.PublicKey{251, 50, 163, 155, 192, 130, 254, 58, 208, 73, 2, 244, 16, 223, 215, 128, 223, 112, 174, 97, 211, 46, 48, 76, 59, 2, 146, 26, 12, 143, 221, 97}},
 	}
 
 	ErrorClientSigInternal = errors.New("internal error while verifying client signature")

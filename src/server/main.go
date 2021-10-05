@@ -7,6 +7,8 @@ import (
 )
 
 func main() {
+	log.SetFlags(log.Lshortfile | log.LstdFlags)
+
 	var err error
 	var listener connection.Listener
 
