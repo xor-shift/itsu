@@ -9,6 +9,7 @@ import (
 	"example.com/itsuMain/lib/message"
 	"example.com/itsuMain/lib/packet"
 	"github.com/lucas-clemente/quic-go"
+	"net"
 	"sync"
 	"time"
 )
@@ -121,4 +122,8 @@ func (s *Session) getToken() (uint64, error) {
 		token := reply.(message.TokenReplyMessage).Token
 		return token, nil
 	}
+}
+
+func (s *Session) Address() net.Addr {
+	return s.session.RemoteAddr()
 }

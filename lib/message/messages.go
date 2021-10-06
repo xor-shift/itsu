@@ -70,6 +70,7 @@ func (m *ClientQueryRequest) SetSignatureToken(v uint64) { m.Token = v }
 
 type ClientInformation struct {
 	SysInfo util.SystemInformation
+	Address string
 }
 
 type ClientQueryReply struct {

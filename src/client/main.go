@@ -43,6 +43,6 @@ func mainFunc() {
 
 	log.Println(handshakeReply)
 
-	//establised a connection, query for commands now
+	//established a connection, query for commands now
 
 }

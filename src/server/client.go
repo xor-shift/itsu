@@ -117,6 +117,7 @@ func (c *Client) handleMessage(s *Server, m message.Msg, p packet.Packet) (err e
 		} else {
 			reply.Found = true
 			reply.Info.SysInfo = cl.sysInfo
+			reply.Info.Address = cl.Session.Address().String()
 		}
 
 		_, err = c.Session.WriteMessage(reply)
