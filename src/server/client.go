@@ -121,6 +121,8 @@ func (c *Client) handleMessage(s *Server, m message.Msg, p packet.Packet) (err e
 		}
 
 		_, err = c.Session.WriteMessage(reply)
+	case message.ProxyRequest:
+		break
 	default:
 		c.logger().println("unhandled MID: ", m.GetID())
 		err = ErrorUnhandledMID

@@ -32,7 +32,9 @@ func NewServer() (s *Server) {
 }
 
 func (s *Server) garbageCollector() {
-	for {
+	ticker := time.NewTicker(time.Second * 5)
+
+	fn := func() {
 		ids := make([]uint64, 0)
 
 		s.clientsMutex.RLock()
@@ -53,7 +55,16 @@ func (s *Server) garbageCollector() {
 			s.clientsMutex.Unlock()
 		}
 
-		time.Sleep(time.Second * 5)
+	}
+
+	for {
+		select {
+		case _, ok := <-ticker.C:
+			if !ok {
+				break
+			}
+			fn()
+		}
 	}
 }
 

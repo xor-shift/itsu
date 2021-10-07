@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"example.com/itsuMain/lib/packet"
 	"example.com/itsuMain/lib/util"
+	"net"
 )
 
 type PingRequestMessage struct{ Token int32 }
@@ -80,23 +81,86 @@ type ClientQueryReply struct {
 
 func (m ClientQueryReply) GetID() MessageID { return MIDClientQueryReply }
 
+//for integer comparisons:
+//-2: the client value must be less than the specified value
+//-1: the client value must be less than or equal to the specified value
+//0: the client value must be equal to the specified value
+//1: the client value must be greater than or equal to the specified value
+//2: the client value must be greater than the specified value
+//3: the clinet value must not be equal to the specified value
+//4: true
+//
+//for string comparisons:
+//true: the client value must equal the specified value
+//false: the client value must not equal the specified value
+//if the specified string is empty, the result is always true
+type ProxyCondition struct {
+	RTCPU     int
+	RTCPUComp int8
+
+	GOOS     string
+	GOOSComp bool
+
+	CPUIDCPU     int
+	CPUIDCPUComp int8
+
+	CPUIDHasFeatures         uint64
+	CPUIDHasExtendedFeatures uint64
+	CPUIDHasExtraFeatures    uint64
+
+	Hostname     string
+	HostnameComp bool
+	Username     string
+	UsernameComp bool
+	Address      string
+	AddressComp  bool
+}
+
+func (c ProxyCondition) CompareWith(information util.SystemInformation, address net.Addr) bool {
+	compareInt := func(sv, cv int, typ int8) bool {
+		comps := map[int8]func(sv, cv int) bool{
+			int8(-2): func(sv, cv int) bool { return cv < sv },
+			int8(-1): func(sv, cv int) bool { return cv <= sv },
+			int8(0):  func(sv, cv int) bool { return cv == sv },
+			int8(1):  func(sv, cv int) bool { return cv >= sv },
+			int8(2):  func(sv, cv int) bool { return cv > sv },
+			int8(3):  func(sv, cv int) bool { return cv != sv },
+			int8(4):  func(sv, cv int) bool { return true },
+		}
+
+		if cf, ok := comps[typ]; !ok {
+			return false
+		} else {
+			return cf(sv, cv) || sv == 0
+		}
+	}
+
+	compareString := func(sv, cv string, typ bool) bool { return typ == (sv == cv) || cv == "" }
+
+	compareMask := func(sv, cv uint64) bool {
+		pass := true
+
+		for i := uint64(0); i < 64; i++ {
+			pass = pass && ((((sv >> i) & 1) != 1) || (((cv >> i) & 1) == 1)) //p'+q
+		}
+
+		return pass
+	}
+
+	return compareInt(c.RTCPU, information.GONumCPU, c.RTCPUComp) &&
+		compareInt(c.CPUIDCPU, int(information.ProcMaxID), c.CPUIDCPUComp) &&
+		compareString(c.GOOS, information.GOOS, c.GOOSComp) &&
+		compareMask(c.CPUIDHasFeatures, information.ProcFeatures) &&
+		compareMask(c.CPUIDHasExtendedFeatures, information.ProcExtendedFeatures) &&
+		compareMask(c.CPUIDHasExtraFeatures, information.ProcExtraFeatures) &&
+		compareString(c.Hostname, information.Hostname, c.HostnameComp) &&
+		compareString(c.Username, information.Username, c.UsernameComp) &&
+		compareString(c.Address, address.String(), c.AddressComp)
+}
+
 type ProxyRequest struct {
-	/*
-		0 -> unicast
-		1 -> broadcast
-		2 -> multicast
-		3 -> anycast
-	*/
-	Type int
-
-	//for type 0 and 1
-	Target uint64
-
-	//for type 2 and 3
-	Targets []uint64
-
-	//for type 3
-	MaxRelays int
+	MaxTargets int //negative numbers and zero mean broadcast, 1 means regular anycast, any other positive integer means a mix of multi and anycast
+	Condition  ProxyCondition
 
 	Packet packet.Packet
 
