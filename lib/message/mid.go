@@ -32,7 +32,8 @@ const (
 	MIDClientsRequest     = midCat2 | 0
 	MIDClientQueryRequest = midCat2 | 1
 
-	MIDProxyRequestMessage = midCat4 | 0
+	MIDProxyRequest      = midCat4 | 0
+	MIDFetchProxyRequest = midCat4 | 1
 
 	//
 
@@ -51,7 +52,11 @@ const (
 	MIDClientsReply     = midReplyBit | MIDClientsRequest
 	MIDClientQueryReply = midReplyBit | MIDClientQueryRequest
 
-	MIDProxyReplyMessage = midReplyBit | MIDProxyRequestMessage
+	MIDProxyReply      = midReplyBit | MIDProxyRequest
+	MIDFetchProxyReply = midReplyBit | MIDFetchProxyRequest
+
+	MIDCmdEcho  = midReplyBit | midCat4 | 0x80
+	MIDCmdPanic = midReplyBit | midCat4 | 0x81
 
 	//
 

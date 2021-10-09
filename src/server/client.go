@@ -92,12 +92,12 @@ func (c *Client) handleMessage(s *Server, m message.Msg, p packet.Packet) (err e
 		}
 	}
 
-	switch v := m.(type) {
+	switch msg := m.(type) {
 	case message.PingRequestMessage:
-		_, err = c.Session.WriteMessage(message.PingReplyMessage{Token: v.Token})
+		_, err = c.Session.WriteMessage(message.PingReplyMessage{Token: msg.Token})
 		break
 	case message.SignedPingRequestMessage:
-		_, err = c.Session.WriteMessage(message.SignedPingReplyMessage{Token: v.PToken})
+		_, err = c.Session.WriteMessage(message.SignedPingReplyMessage{Token: msg.PToken})
 		break
 	case message.TokenRequestMessage:
 		_, err = c.Session.WriteMessage(message.TokenReplyMessage{Token: c.currentToken})
@@ -109,7 +109,7 @@ func (c *Client) handleMessage(s *Server, m message.Msg, p packet.Packet) (err e
 		list := s.GetClientsList()
 		_, err = c.Session.WriteMessage(message.ClientsReplyMessage{Clients: list})
 	case message.ClientQueryRequest:
-		cl := s.GetClient(v.ID)
+		cl := s.GetClient(msg.ID)
 		reply := message.ClientQueryReply{}
 
 		if cl == nil {
@@ -122,6 +122,16 @@ func (c *Client) handleMessage(s *Server, m message.Msg, p packet.Packet) (err e
 
 		_, err = c.Session.WriteMessage(reply)
 	case message.ProxyRequest:
+		s.IssueProxyRequest(msg)
+		break
+	case message.FetchProxyRequest:
+		reqs := s.GetProxyRequests(msg.From, msg.To, c)
+		for _, v := range reqs {
+			if _, err = c.Session.WritePacket(v); err != nil {
+				return
+			}
+		}
+		_, err = c.Session.WriteMessage(message.FetchProxyReply{})
 		break
 	default:
 		c.logger().println("unhandled MID: ", m.GetID())

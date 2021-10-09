@@ -9,7 +9,11 @@ import (
 )
 
 const (
-	connectionPeriod = time.Second * 2
+	connectionPeriod = time.Second * 6
+)
+
+var (
+	lastFetch int64 = 0
 )
 
 func main() {
@@ -34,15 +38,43 @@ func mainFunc() {
 		log.Panicln(err)
 	}
 
-	var handshakeReply message.HandshakeReplyMessage
+	defer func() {
+		if e0, e1 := session.Close(); e0 != nil || e1 != nil {
+			log.Print("Session closure errored: ", e0, ", ", e1)
+		}
+	}()
+
+	var clientID uint64
 	if tMsg, _, err = session.WriteAndReadMessageMID(message.HandshakeRequestMessage{SysInfo: util.GetSystemInformation()}, message.MIDHandshakeReply); err != nil {
 		log.Panicln(err)
 	} else {
-		handshakeReply = tMsg.(message.HandshakeReplyMessage)
+		clientID = tMsg.(message.HandshakeReplyMessage).ID
 	}
-
-	log.Println(handshakeReply)
+	_ = clientID
 
 	//established a connection, query for commands now
+	if _, err = session.WriteMessage(message.FetchProxyRequest{From: lastFetch}); err != nil {
+		log.Panicln(err)
+	}
+	lastFetch = time.Now().UnixMilli()
 
+	for lastMsg := message.Msg(nil); ; {
+		if lastMsg, _, err = session.ReadMessage(); err != nil {
+			log.Panicln(err)
+		}
+
+		if lastMsg.GetID() == message.MIDFetchProxyReply {
+			break
+		}
+
+		switch v := lastMsg.(type) {
+		case message.CommandEcho:
+			log.Println(v.Message)
+			break
+		case message.CommandPanic:
+			panic(v.Message)
+		default:
+			log.Println("Unhandled MID for commands:", lastMsg.GetID())
+		}
+	}
 }

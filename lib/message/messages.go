@@ -81,51 +81,42 @@ type ClientQueryReply struct {
 
 func (m ClientQueryReply) GetID() MessageID { return MIDClientQueryReply }
 
-//for integer comparisons:
-//-2: the client value must be less than the specified value
-//-1: the client value must be less than or equal to the specified value
-//0: the client value must be equal to the specified value
-//1: the client value must be greater than or equal to the specified value
-//2: the client value must be greater than the specified value
-//3: the clinet value must not be equal to the specified value
-//4: true
-//
-//for string comparisons:
-//true: the client value must equal the specified value
-//false: the client value must not equal the specified value
-//if the specified string is empty, the result is always true
+// ProxyCondition
+/*asd
+comparisons:
+-3: sv < cv
+-2: sv <= cv
+-1: sv != cv
+0 : true
+1 : sv == cv
+2 : sv >= cv
+3 : sv > cv
+*/
 type ProxyCondition struct {
-	RTCPU     int
-	RTCPUComp int8
+	Comparisons [6]int8
 
+	RTCPU    int32
+	CPUIDCPU int32
 	GOOS     string
-	GOOSComp bool
+	Hostname string
+	Username string
+	Address  string
 
-	CPUIDCPU     int
-	CPUIDCPUComp int8
-
-	CPUIDHasFeatures         uint64
-	CPUIDHasExtendedFeatures uint64
-	CPUIDHasExtraFeatures    uint64
-
-	Hostname     string
-	HostnameComp bool
-	Username     string
-	UsernameComp bool
-	Address      string
-	AddressComp  bool
+	CPUIDFeatures         uint64
+	CPUIDExtendedFeatures uint64
+	CPUIDExtraFeatures    uint64
 }
 
 func (c ProxyCondition) CompareWith(information util.SystemInformation, address net.Addr) bool {
-	compareInt := func(sv, cv int, typ int8) bool {
-		comps := map[int8]func(sv, cv int) bool{
-			int8(-2): func(sv, cv int) bool { return cv < sv },
-			int8(-1): func(sv, cv int) bool { return cv <= sv },
-			int8(0):  func(sv, cv int) bool { return cv == sv },
-			int8(1):  func(sv, cv int) bool { return cv >= sv },
-			int8(2):  func(sv, cv int) bool { return cv > sv },
-			int8(3):  func(sv, cv int) bool { return cv != sv },
-			int8(4):  func(sv, cv int) bool { return true },
+	compareInt := func(sv, cv int32, typ int8) bool {
+		comps := map[int8]func(sv, cv int32) bool{
+			int8(-3): func(sv, cv int32) bool { return sv < cv },
+			int8(-2): func(sv, cv int32) bool { return sv <= cv },
+			int8(-1): func(sv, cv int32) bool { return sv != cv },
+			int8(0):  func(sv, cv int32) bool { return true },
+			int8(1):  func(sv, cv int32) bool { return sv == cv },
+			int8(2):  func(sv, cv int32) bool { return sv >= cv },
+			int8(3):  func(sv, cv int32) bool { return sv > cv },
 		}
 
 		if cf, ok := comps[typ]; !ok {
@@ -135,7 +126,9 @@ func (c ProxyCondition) CompareWith(information util.SystemInformation, address 
 		}
 	}
 
-	compareString := func(sv, cv string, typ bool) bool { return typ == (sv == cv) || cv == "" }
+	compareString := func(sv, cv string, typ int8) bool {
+		return (typ == 0) || (typ == 1 && sv == cv) || (typ == -1 && sv != cv)
+	}
 
 	compareMask := func(sv, cv uint64) bool {
 		pass := true
@@ -147,27 +140,30 @@ func (c ProxyCondition) CompareWith(information util.SystemInformation, address 
 		return pass
 	}
 
-	return compareInt(c.RTCPU, information.GONumCPU, c.RTCPUComp) &&
-		compareInt(c.CPUIDCPU, int(information.ProcMaxID), c.CPUIDCPUComp) &&
-		compareString(c.GOOS, information.GOOS, c.GOOSComp) &&
-		compareMask(c.CPUIDHasFeatures, information.ProcFeatures) &&
-		compareMask(c.CPUIDHasExtendedFeatures, information.ProcExtendedFeatures) &&
-		compareMask(c.CPUIDHasExtraFeatures, information.ProcExtraFeatures) &&
-		compareString(c.Hostname, information.Hostname, c.HostnameComp) &&
-		compareString(c.Username, information.Username, c.UsernameComp) &&
-		compareString(c.Address, address.String(), c.AddressComp)
+	return compareInt(c.RTCPU, int32(information.GONumCPU), c.Comparisons[0]) &&
+		compareInt(c.CPUIDCPU, int32(information.ProcMaxID), c.Comparisons[1]) &&
+		compareString(c.GOOS, information.GOOS, c.Comparisons[2]) &&
+		compareString(c.Hostname, information.Hostname, c.Comparisons[3]) &&
+		compareString(c.Username, information.Username, c.Comparisons[4]) &&
+		compareString(c.Address, address.String(), c.Comparisons[5]) &&
+		compareMask(c.CPUIDFeatures, information.ProcFeatures) &&
+		compareMask(c.CPUIDExtendedFeatures, information.ProcExtendedFeatures) &&
+		compareMask(c.CPUIDExtraFeatures, information.ProcExtraFeatures)
 }
 
 type ProxyRequest struct {
 	MaxTargets int //negative numbers and zero mean broadcast, 1 means regular anycast, any other positive integer means a mix of multi and anycast
 	Condition  ProxyCondition
 
+	IssuedOn  int64 //the date at which the proxy is issued
+	ExpiresOn int64 //the date at which the proxy expires
+
 	Packet packet.Packet
 
 	Token uint64
 }
 
-func (m ProxyRequest) GetID() MessageID { return MIDProxyRequestMessage }
+func (m ProxyRequest) GetID() MessageID { return MIDProxyRequest }
 
 func (m ProxyRequest) GetSignatureToken() uint64 { return m.Token }
 
@@ -177,7 +173,18 @@ type ProxyReply struct {
 	RelayedTo []uint64
 }
 
-func (m ProxyReply) GetID() MessageID { return MIDProxyReplyMessage }
+func (m ProxyReply) GetID() MessageID { return MIDProxyReply }
+
+type FetchProxyRequest struct {
+	From, To int64
+}
+
+func (m FetchProxyRequest) GetID() MessageID { return MIDFetchProxyRequest }
+
+//FetchProxyReply is sent at the end of a proxy message stream
+type FetchProxyReply struct{}
+
+func (m FetchProxyReply) GetID() MessageID { return MIDFetchProxyReply }
 
 func init() {
 	gob.Register(PingRequestMessage{})
@@ -196,4 +203,6 @@ func init() {
 	gob.Register(ClientQueryReply{})
 	gob.Register(ProxyRequest{})
 	gob.Register(ProxyReply{})
+	gob.Register(FetchProxyRequest{})
+	gob.Register(FetchProxyReply{})
 }

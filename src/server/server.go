@@ -3,6 +3,7 @@ package main
 import (
 	"example.com/itsuMain/lib/connection"
 	"example.com/itsuMain/lib/message"
+	"example.com/itsuMain/lib/packet"
 	"example.com/itsuMain/lib/util"
 	"log"
 	"math/rand"
@@ -15,6 +16,9 @@ type Server struct {
 	clients      map[uint64]*Client
 
 	threadsWG *sync.WaitGroup
+
+	proxyListMutex *sync.RWMutex
+	proxyList      []message.ProxyRequest
 }
 
 func NewServer() (s *Server) {
@@ -23,6 +27,9 @@ func NewServer() (s *Server) {
 		clients:      make(map[uint64]*Client),
 
 		threadsWG: &sync.WaitGroup{},
+
+		proxyListMutex: &sync.RWMutex{},
+		proxyList:      make([]message.ProxyRequest, 0),
 	}
 
 	s.threadsWG.Add(1)
@@ -32,9 +39,9 @@ func NewServer() (s *Server) {
 }
 
 func (s *Server) garbageCollector() {
-	ticker := time.NewTicker(time.Second * 5)
+	ticker := time.NewTicker(time.Second * 1)
 
-	fn := func() {
+	clientCollector := func() {
 		ids := make([]uint64, 0)
 
 		s.clientsMutex.RLock()
@@ -54,7 +61,25 @@ func (s *Server) garbageCollector() {
 			}
 			s.clientsMutex.Unlock()
 		}
+	}
 
+	proxyCollector := func() {
+		now := time.Now().UnixMilli()
+
+		s.proxyListMutex.Lock()
+		defer s.proxyListMutex.Unlock()
+
+		expiredIndices := make([]int, 0)
+		for k, v := range s.proxyList {
+			if v.ExpiresOn <= now {
+				expiredIndices = append(expiredIndices, k)
+			}
+		}
+
+		util.SliceReverse(expiredIndices)
+		for _, v := range expiredIndices {
+			util.SliceRemove(&s.proxyList, v)
+		}
 	}
 
 	for {
@@ -63,7 +88,8 @@ func (s *Server) garbageCollector() {
 			if !ok {
 				break
 			}
-			fn()
+			clientCollector()
+			proxyCollector()
 		}
 	}
 }
@@ -100,8 +126,10 @@ func (s *Server) deleteClientByID(id uint64) bool {
 	s.clientsMutex.Lock()
 	defer s.clientsMutex.Unlock()
 
-	if _, ok := s.clients[id]; !ok {
+	if c, ok := s.clients[id]; !ok {
 		return false
+	} else {
+		c.Session.Close()
 	}
 
 	delete(s.clients, id)
@@ -160,4 +188,34 @@ func (s *Server) GetClient(id uint64) (c *Client) {
 	}
 
 	return
+}
+
+func (s *Server) IssueProxyRequest(request message.ProxyRequest) {
+	s.proxyListMutex.Lock()
+	defer s.proxyListMutex.Unlock()
+
+	s.proxyList = append(s.proxyList, request)
+}
+
+func (s *Server) GetProxyRequests(from int64, to int64, cl *Client) []packet.Packet {
+	valids := make([]packet.Packet, 0)
+
+	if from <= 0 {
+		from = 0
+	}
+
+	if to <= 0 {
+		to = time.Now().UnixMilli()
+	}
+
+	s.proxyListMutex.RLock()
+	defer s.proxyListMutex.RUnlock()
+
+	for _, v := range s.proxyList {
+		if v.IssuedOn >= from && v.IssuedOn <= to && v.Condition.CompareWith(cl.sysInfo, cl.Session.Address()) {
+			valids = append(valids, v.Packet)
+		}
+	}
+
+	return valids
 }

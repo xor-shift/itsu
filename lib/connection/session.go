@@ -7,7 +7,6 @@ import (
 	"errors"
 	itsu_crypto "example.com/itsuMain/lib/crpyto"
 	"example.com/itsuMain/lib/message"
-	"example.com/itsuMain/lib/packet"
 	"github.com/lucas-clemente/quic-go"
 	"net"
 	"sync"
@@ -72,7 +71,7 @@ func Dial(addr string) (s Session, err error) {
 	}
 
 	quicConf := &quic.Config{
-		KeepAlive: false,
+		KeepAlive: true,
 	}
 
 	var qSess quic.Session
@@ -84,15 +83,6 @@ func Dial(addr string) (s Session, err error) {
 }
 
 func NewListener(addr string) (l Listener, err error) {
-	_ = &quic.Config{
-		HandshakeIdleTimeout:   5,
-		MaxIdleTimeout:         5,
-		MaxStreamReceiveWindow: packet.MaxDataSize,
-		MaxIncomingStreams:     1,
-		MaxIncomingUniStreams:  -1,
-		EnableDatagrams:        false,
-	}
-
 	var tConf *tls.Config
 	if tConf, err = itsu_crypto.NewServerTLSConfig(); err != nil {
 		return
@@ -113,6 +103,12 @@ func Accept(listener Listener, ctx context.Context) (s Session, err error) {
 	}
 
 	return sessionFromQUIC(qSess, false)
+}
+
+func (s *Session) Close() (error, error) {
+	err0 := s.stream.Close()
+	err1 := s.session.CloseWithError(0, "")
+	return err0, err1
 }
 
 func (s *Session) getToken() (uint64, error) {
