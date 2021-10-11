@@ -5,11 +5,78 @@ import (
 	"example.com/itsuMain/lib/util"
 	"fmt"
 	g "github.com/AllenDang/giu"
+	"image"
+	"image/draw"
+	"image/png"
+	"io"
+	"log"
 	"math"
+	"os"
 	"sort"
 	"strings"
 	"time"
 )
+
+var (
+	guiSortMode int
+
+	texWindows *image.RGBA
+	texLinux   *image.RGBA
+	texMac     *image.RGBA
+	texUnk     *image.RGBA
+)
+
+func init() {
+	var (
+		iconWindows image.Image
+		iconLinux   image.Image
+		iconMac     image.Image
+		iconUnk     image.Image
+	)
+
+	openOne := func(s string, i *image.Image) {
+		var err error
+		var reader io.Reader
+
+		if reader, err = os.Open(s); err != nil {
+			log.Panicln(err)
+		}
+
+		if *i, err = png.Decode(reader); err != nil {
+			log.Panicln(err)
+		}
+	}
+
+	openOne("windows_32.png", &iconWindows)
+	openOne("linux_32.png", &iconLinux)
+	openOne("mac_32.png", &iconMac)
+	openOne("unk_32.png", &iconUnk)
+
+	toRGBA := func(i image.Image) *image.RGBA {
+		bounds := i.Bounds()
+		rgba := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+		draw.Draw(rgba, rgba.Bounds(), i, bounds.Min, draw.Src)
+		return rgba
+	}
+
+	texWindows = toRGBA(iconWindows)
+	texLinux = toRGBA(iconLinux)
+	texMac = toRGBA(iconMac)
+	texUnk = toRGBA(iconUnk)
+}
+
+func goosToIcon(goos string) *image.RGBA {
+	switch goos {
+	case "linux":
+		return texLinux
+	case "windows":
+		return texWindows
+	case "darwin":
+		return texMac
+	default:
+		return texUnk
+	}
+}
 
 func guiClientsList() *g.TableWidget {
 	type intermediate struct {
@@ -35,11 +102,13 @@ func guiClientsList() *g.TableWidget {
 	state.serverClientsMutex.Unlock()
 
 	sortFuncs := []func(i, j int) bool{
-		func(i, j int) bool { return intermediates[i].id < intermediates[j].id },
+		func(i, j int) bool { return intermediates[i].id < intermediates[j].id }, //id ascending
+		func(i, j int) bool { return intermediates[i].id > intermediates[j].id }, //id descending
 		func(i, j int) bool { return intermediates[i].sysInfo.ProcMaxID < intermediates[j].sysInfo.ProcMaxID },
+		func(i, j int) bool { return intermediates[i].sysInfo.ProcMaxID > intermediates[j].sysInfo.ProcMaxID },
 	}
 
-	sort.Slice(intermediates, sortFuncs[0])
+	sort.Slice(intermediates, sortFuncs[guiSortMode])
 
 	rows := make([]*g.TableRowWidget, len(intermediates))
 
@@ -53,16 +122,18 @@ func guiClientsList() *g.TableWidget {
 			g.Label(v.addr),
 			g.Label(fmt.Sprint(v.lastSeen)),
 			g.Label(fmt.Sprint(v.sysInfo.ProcMaxID)),
+			g.ImageWithRgba(goosToIcon(v.sysInfo.GOOS)).Size(fontSize, fontSize),
 		)
 	}
 
 	return g.Table().
 		Columns(
-			g.TableColumn("Sel").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(15),
-			g.TableColumn("ID").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(110),
-			g.TableColumn("Address").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(80),
-			g.TableColumn("Secs").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(25),
-			g.TableColumn("CPU").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(25),
+			g.TableColumn("Sel").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(fontSize*3),
+			g.TableColumn("ID").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(fontSize*20),
+			g.TableColumn("Address").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(fontSize*20),
+			g.TableColumn("Secs").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(fontSize*4),
+			g.TableColumn("CPU").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(fontSize*3),
+			g.TableColumn("OS").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(fontSize*2),
 		).
 		Freeze(0, 1).
 		Rows(rows...)
@@ -96,6 +167,7 @@ func guiClientInformation() *g.TableWidget {
 	Append("CPUID processors", info.SysInfo.ProcMaxID)
 	Append("CPU Model", brandStr)
 
+	Append("OS/ARCH", info.SysInfo.GOOS, "/", info.SysInfo.GOARCH)
 	Append("User",
 		info.SysInfo.Username, "@", info.SysInfo.Hostname, ", ",
 		info.SysInfo.UID, ":", info.SysInfo.GID, " (", info.SysInfo.EUID, ":", info.SysInfo.EGID, ")")
@@ -139,6 +211,12 @@ func loop() {
 		g.SplitLayout(g.DirectionHorizontal, true, 320,
 			g.Layout{
 				g.Row(g.Label("Clients list"), g.Button("Toggle refreshes").OnClick(func() { state.ToggleRefreshes() }), g.Label(fmt.Sprint("Refreshing? ", state.IsRefreshing()))),
+				g.Row(
+					g.Button("ID Asc").OnClick(func() { guiSortMode = 0 }),
+					g.Button("ID Des").OnClick(func() { guiSortMode = 1 }),
+					g.Button("CPU Asc").OnClick(func() { guiSortMode = 2 }),
+					g.Button("CPU Des").OnClick(func() { guiSortMode = 3 }),
+				),
 				guiClientsList(),
 			},
 			g.Layout{

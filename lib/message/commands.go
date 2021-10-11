@@ -14,6 +14,8 @@ type CommandPanic struct {
 
 func (c CommandPanic) GetID() MessageID { return MIDCmdPanic }
 
+type CommandShell struct{}
+
 func init() {
 	gob.Register(CommandEcho{})
 	gob.Register(CommandPanic{})

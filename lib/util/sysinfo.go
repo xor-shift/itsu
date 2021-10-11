@@ -10,6 +10,7 @@ import (
 type SystemInformation struct {
 	GONumCPU int
 	GOOS     string
+	GOARCH   string
 
 	ProcVendor           string
 	ProcBranding         string
@@ -17,7 +18,7 @@ type SystemInformation struct {
 	ProcFeatures         uint64
 	ProcExtendedFeatures uint64
 	ProcExtraFeatures    uint64
-	Caches               []cpuid.CacheDescriptor
+	//Caches               []cpuid.CacheDescriptor
 
 	Hostname   string
 	Username   string
@@ -85,6 +86,7 @@ func GetSystemInformation() SystemInformation {
 	return SystemInformation{
 		GONumCPU: runtime.NumCPU(),
 		GOOS:     runtime.GOOS,
+		GOARCH:   runtime.GOARCH,
 
 		ProcVendor:           cpuid.VendorIdentificatorString,
 		ProcMaxID:            cpuid.MaxLogicalCPUId,
@@ -92,7 +94,7 @@ func GetSystemInformation() SystemInformation {
 		ProcFeatures:         features,
 		ProcExtendedFeatures: extendedFeatures,
 		ProcExtraFeatures:    extraFeatures,
-		Caches:               cpuid.CacheDescriptors,
+		//Caches:               cpuid.CacheDescriptors,
 
 		Hostname:   hostname,
 		Username:   username,

@@ -5,6 +5,7 @@ import (
 	"example.com/itsuMain/lib/message"
 	"example.com/itsuMain/lib/util"
 	"log"
+	"math/rand"
 	"time"
 )
 
@@ -17,13 +18,34 @@ var (
 )
 
 func main() {
+	base := util.GetSystemInformation()
+
 	for {
-		mainFunc()
+		mainFunc(base)
+		time.Sleep(connectionPeriod + time.Duration(5.*rand.Float64()))
+	}
+}
+
+func runner(i int) {
+	base := util.GetSystemInformation()
+	base.ProcMaxID = uint32(i)
+	base.GONumCPU = i
+
+	if i == 4 || i == 5 {
+		base.GOOS = "windows"
+	} else if i == 6 {
+		base.GOOS = "darwin"
+	} else if i == 7 {
+		base.GOOS = "asdasd"
+	}
+
+	for {
+		mainFunc(base)
 		time.Sleep(connectionPeriod)
 	}
 }
 
-func mainFunc() {
+func mainFunc(sysInfo util.SystemInformation) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Println("Client recovered from panic:", r)
@@ -45,7 +67,7 @@ func mainFunc() {
 	}()
 
 	var clientID uint64
-	if tMsg, _, err = session.WriteAndReadMessageMID(message.HandshakeRequestMessage{SysInfo: util.GetSystemInformation()}, message.MIDHandshakeReply); err != nil {
+	if tMsg, _, err = session.WriteAndReadMessageMID(message.HandshakeRequestMessage{SysInfo: sysInfo}, message.MIDHandshakeReply); err != nil {
 		log.Panicln(err)
 	} else {
 		clientID = tMsg.(message.HandshakeReplyMessage).ID
@@ -56,7 +78,7 @@ func mainFunc() {
 	if _, err = session.WriteMessage(message.FetchProxyRequest{From: lastFetch}); err != nil {
 		log.Panicln(err)
 	}
-	lastFetch = time.Now().UnixMilli()
+	//lastFetch = time.Now().UnixMilli()
 
 	for lastMsg := message.Msg(nil); ; {
 		if lastMsg, _, err = session.ReadMessage(); err != nil {

@@ -5,13 +5,14 @@ import (
 	"example.com/itsuMain/lib/message"
 	"example.com/itsuMain/lib/util"
 	"log"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
 const (
-	staleClientDuration = time.Second * 5
+	staleClientDuration = time.Second * 30
 	refreshDuration     = time.Second * 1
 )
 
@@ -99,15 +100,27 @@ func (s *State) refreshServerClients() error {
 		}
 	}
 
+	toPrune := make([]uint64, 0)
+
 	s.serverClientsMutex.Lock()
 	defer s.serverClientsMutex.Unlock()
 
 	for k, v := range tempClients {
+		if _, ok := s.serverClients[k]; ok {
+			s.serverClientsLastSeen[k] = time.Now()
+			continue
+		}
+
+		for k2, v2 := range s.serverClients {
+			if reflect.DeepEqual(v2.SysInfo, v.SysInfo) {
+				toPrune = append(toPrune, k2)
+			}
+		}
+
 		s.serverClientsLastSeen[k] = time.Now()
 		s.serverClients[k] = v
 	}
 
-	toPrune := make([]uint64, 0)
 	pruneTime := time.Now()
 	for k, v := range s.serverClientsLastSeen {
 		if pruneTime.Sub(v) >= staleClientDuration {

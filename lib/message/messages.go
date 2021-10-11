@@ -84,13 +84,13 @@ func (m ClientQueryReply) GetID() MessageID { return MIDClientQueryReply }
 // ProxyCondition
 /*asd
 comparisons:
--3: sv < cv
--2: sv <= cv
--1: sv != cv
+-3: cv < sv
+-2: cv <= sv
+-1: cv != sv
 0 : true
-1 : sv == cv
-2 : sv >= cv
-3 : sv > cv
+1 : cv == sv
+2 : cv >= sv
+3 : cv > sv
 */
 type ProxyCondition struct {
 	Comparisons [6]int8
@@ -107,16 +107,24 @@ type ProxyCondition struct {
 	CPUIDExtraFeatures    uint64
 }
 
+const (
+	CompFieldRTCPU    = 0
+	CompFieldCPUIDCPU = 1
+	CompFieldGOOS     = 2
+	CompFieldHostname = 3
+	CompFieldUsername = 4
+)
+
 func (c ProxyCondition) CompareWith(information util.SystemInformation, address net.Addr) bool {
 	compareInt := func(sv, cv int32, typ int8) bool {
 		comps := map[int8]func(sv, cv int32) bool{
-			int8(-3): func(sv, cv int32) bool { return sv < cv },
-			int8(-2): func(sv, cv int32) bool { return sv <= cv },
-			int8(-1): func(sv, cv int32) bool { return sv != cv },
+			int8(-3): func(sv, cv int32) bool { return cv < sv },
+			int8(-2): func(sv, cv int32) bool { return cv <= sv },
+			int8(-1): func(sv, cv int32) bool { return cv != sv },
 			int8(0):  func(sv, cv int32) bool { return true },
-			int8(1):  func(sv, cv int32) bool { return sv == cv },
-			int8(2):  func(sv, cv int32) bool { return sv >= cv },
-			int8(3):  func(sv, cv int32) bool { return sv > cv },
+			int8(1):  func(sv, cv int32) bool { return cv == sv },
+			int8(2):  func(sv, cv int32) bool { return cv >= sv },
+			int8(3):  func(sv, cv int32) bool { return cv > sv },
 		}
 
 		if cf, ok := comps[typ]; !ok {

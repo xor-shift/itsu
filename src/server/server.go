@@ -39,7 +39,7 @@ func NewServer() (s *Server) {
 }
 
 func (s *Server) garbageCollector() {
-	ticker := time.NewTicker(time.Second * 1)
+	ticker := time.NewTicker(time.Second * 5)
 
 	clientCollector := func() {
 		ids := make([]uint64, 0)
