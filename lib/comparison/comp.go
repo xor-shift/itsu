@@ -4,7 +4,6 @@ import (
 	"errors"
 	"example.com/itsuMain/lib/util"
 	"fmt"
-	"log"
 	"reflect"
 	"strconv"
 	"strings"
@@ -582,9 +581,7 @@ func (c *Comparer) SingleStep() (err error) {
 }
 
 func (c *Comparer) Run() (result bool, err error) {
-	log.Print(c.program)
 	for c.instrPtr < len(c.program) {
-		log.Print("program at ", c.instrPtr, ": ", c.program[c.instrPtr])
 		if err = c.SingleStep(); err != nil {
 			return
 		}

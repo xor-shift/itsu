@@ -60,8 +60,6 @@ func TestComparer_Run(t *testing.T) {
 		return
 	}
 
-	log.Println(prog)
-
 	c := NewComparer(prog)
 
 	c.Fields[0] = 2
