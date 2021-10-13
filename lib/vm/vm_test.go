@@ -1,7 +1,11 @@
 package vm
 
 import (
+	"bufio"
+	"bytes"
+	"fmt"
 	"log"
+	"reflect"
 	"testing"
 )
 
@@ -79,4 +83,42 @@ HLT
 
 		runVM(vm)
 	}
+}
+
+type valueSerializationPair struct {
+	v Value
+	b []byte
+}
+
+var valueDeserializationPairs = []valueSerializationPair{
+	{MakeValue(false), []byte{2, 0, 0}},
+	{MakeValue(true), []byte{2, 0, 1}},
+	{MakeValue(0), []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+	{MakeValue(1), []byte{1, 0, 0, 0, 0, 0, 0, 0, 240, 63}},
+	{MakeValue("AAAAAAAA"), []byte{3, 0, 8, 0, 0, 0, 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A'}},
+	{MakeValue(nil), []byte{0, 0}},
+}
+
+func TestValue_Serialize(t *testing.T) {
+	for k, v := range valueDeserializationPairs {
+		b := v.v.Serialize()
+		if !reflect.DeepEqual(b, v.b) {
+			t.Error(fmt.Sprint("test ", k, " failed: ", b))
+		}
+	}
+}
+
+func TestDeserializeValue(t *testing.T) {
+	for k, v := range valueDeserializationPairs {
+		reader := bufio.NewReader(bytes.NewReader(v.b))
+		dv, err := DeserializeValue(reader)
+		if err != nil {
+			t.Error("test ", k, " failed: ", err)
+		}
+
+		if dv.Kind != v.v.Kind || !reflect.DeepEqual(dv.Data, v.v.Data) {
+			t.Error(fmt.Sprint("test ", k, " failed: ", dv))
+		}
+	}
+
 }

@@ -1,13 +1,19 @@
 package vm
 
-import "reflect"
+import (
+	"bufio"
+	"bytes"
+	"encoding/binary"
+	"io"
+	"reflect"
+)
 
 /*
 data types:
 bool, number, string
 */
 
-type Kind int
+type Kind uint16
 
 const (
 	KindNil    = Kind(0)
@@ -19,6 +25,87 @@ const (
 type Value struct {
 	Data interface{}
 	Kind Kind
+}
+
+func (v Value) Serialize() []byte {
+	buffer := bytes.Buffer{}
+
+	binary.Write(&buffer, binary.LittleEndian, v.Kind)
+
+	switch v.Kind {
+	case KindBool:
+		if v.Data.(bool) {
+			buffer.WriteByte(1)
+		} else {
+			buffer.WriteByte(0)
+		}
+		break
+
+	case KindNumber:
+		binary.Write(&buffer, binary.LittleEndian, v.Data.(float64))
+		break
+
+	case KindString:
+		binary.Write(&buffer, binary.LittleEndian, uint32(len(v.Data.(string))))
+		buffer.Write([]byte(v.Data.(string)))
+		break
+
+	default:
+		break
+	}
+
+	return buffer.Bytes()
+}
+
+func DeserializeValue(reader *bufio.Reader) (v Value, err error) {
+	var kind uint16
+	if err = binary.Read(reader, binary.LittleEndian, &kind); err != nil {
+		return
+	}
+
+	v.Kind = Kind(kind)
+	v.Data = nil
+
+	switch v.Kind {
+	case KindBool:
+		var b byte
+		if b, err = reader.ReadByte(); err != nil {
+			return
+		}
+		if b == 0 {
+			v.Data = false
+		} else {
+			v.Data = true
+		}
+		break
+
+	case KindNumber:
+		var n float64
+		if err = binary.Read(reader, binary.LittleEndian, &n); err != nil {
+			return
+		}
+		v.Data = n
+		break
+
+	case KindString:
+		var length uint32
+		if err = binary.Read(reader, binary.LittleEndian, &length); err != nil {
+			return
+		}
+
+		buffer := make([]byte, length)
+		if _, err = io.ReadFull(reader, buffer); err != nil {
+			return
+		}
+
+		v.Data = string(buffer)
+		break
+
+	default:
+		break
+	}
+
+	return
 }
 
 var (
@@ -42,6 +129,10 @@ var (
 
 //MakeValue constructs a Value from various data types. If nil or an unsupported type is passed, a NilValue will be generated
 func MakeValue(v interface{}) Value {
+	if v == nil {
+		return ValueNil
+	}
+
 	switch val := reflect.ValueOf(v); val.Type().Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return Value{
