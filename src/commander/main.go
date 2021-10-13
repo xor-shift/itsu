@@ -45,10 +45,10 @@ func issueCommand(msg message.Msg) {
 	proxyConditions.Comparisons[2] = int8(CondGOOS)
 
 	if _, err := state.session.WriteMessageED25519(&message.ProxyRequest{
-		IssuedOn:  time.Now().UnixMilli(),
-		ExpiresOn: time.Now().UnixMilli() + int64(CmdDuration)*1000,
-		Packet:    packet.NewPacket(message.SerializeMessage(msg)),
-		Condition: proxyConditions,
+		IssuedOn:          time.Now().UnixMilli(),
+		ExpiresOn:         time.Now().UnixMilli() + int64(CmdDuration)*1000,
+		Packet:            packet.NewPacket(message.SerializeMessage(msg)),
+		ComparisonProgram: builtProgram,
 	}, privateKey); err != nil {
 		log.Panicln(err)
 	}

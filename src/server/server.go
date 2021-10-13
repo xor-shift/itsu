@@ -212,9 +212,21 @@ func (s *Server) GetProxyRequests(from int64, to int64, cl *Client) []packet.Pac
 	defer s.proxyListMutex.RUnlock()
 
 	for _, v := range s.proxyList {
-		if v.IssuedOn >= from && v.IssuedOn <= to && v.Condition.CompareWith(cl.sysInfo, cl.Session.Address()) {
-			valids = append(valids, v.Packet)
+		if !(v.IssuedOn >= from && v.IssuedOn <= to) {
+			continue
 		}
+
+		if linked, err := v.ComparisonProgram.Link(map[string]interface{}{
+			"const0": 1.5,
+			"const1": "asdasd asd",
+		}); err != nil {
+			log.Println(err)
+			continue
+		} else {
+			log.Println(linked)
+		}
+
+		valids = append(valids, v.Packet)
 	}
 
 	return valids

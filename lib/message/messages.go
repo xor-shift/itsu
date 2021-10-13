@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"example.com/itsuMain/lib/packet"
 	"example.com/itsuMain/lib/util"
+	"example.com/itsuMain/lib/vm"
 	"net"
 )
 
@@ -160,8 +161,8 @@ func (c ProxyCondition) CompareWith(information util.SystemInformation, address 
 }
 
 type ProxyRequest struct {
-	MaxTargets int //negative numbers and zero mean broadcast, 1 means regular anycast, any other positive integer means a mix of multi and anycast
-	Condition  ProxyCondition
+	MaxTargets        int //negative numbers and zero mean broadcast, 1 means regular anycast, any other positive integer means a mix of multi and anycast
+	ComparisonProgram vm.BuiltProgram
 
 	IssuedOn  int64 //the date at which the proxy is issued
 	ExpiresOn int64 //the date at which the proxy expires

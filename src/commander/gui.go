@@ -27,9 +27,10 @@ var (
 	texUnk     *image.RGBA
 
 	conditionEditor       *g.CodeEditorWidget
-	lastCompileError      error = nil
-	lastCompilerErrorDate       = time.Now()
+	lastCompileError      error     = nil
+	lastCompilerErrorDate time.Time = time.Now()
 	builtProgram          vm.BuiltProgram
+	serializedProgram     []byte
 )
 
 func init() {
@@ -207,17 +208,17 @@ func guiProxyConditions() g.Layout {
 	return g.Layout{
 		conditionEditor,
 		g.Button("Compile").OnClick(func() {
+
 			builder := vm.NewProgramBuilder()
 
-			if err := vm.CompileFORTH(builder, conditionEditor.GetText()); err != nil {
-				lastCompileError = err
+			if lastCompileError = vm.CompileFORTH(builder, conditionEditor.GetText()); lastCompileError != nil {
 				lastCompilerErrorDate = time.Now()
 				return
 			}
 
 			builtProgram = builder.Build()
 
-			log.Println(builtProgram)
+			log.Println(serializedProgram)
 		}), g.Label(fmt.Sprint("Last error: ", lastCompileError, "\ntook place at ", lastCompilerErrorDate.Format("15:04:05"))),
 	}
 }

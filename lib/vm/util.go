@@ -3,6 +3,7 @@ package vm
 import (
 	"bytes"
 	"encoding/binary"
+	"reflect"
 	"strings"
 	"unicode"
 )
@@ -109,4 +110,40 @@ func tokenizeString(str string) []string {
 	endToken()
 
 	return tokens
+}
+
+func genericPush(slicePtr interface{}, ptr *int, v interface{}) error {
+	sl := reflect.ValueOf(slicePtr)
+	slv := reflect.Indirect(sl)
+
+	if *ptr == slv.Len() {
+		return ErrorOverflow
+	}
+
+	slv.Index(*ptr).Set(reflect.ValueOf(v))
+	*ptr += 1
+
+	return nil
+}
+
+func genericTop(slice interface{}, sp int) (interface{}, error) {
+	if sp == 0 {
+		return nil, ErrorUnderflow
+	}
+
+	return reflect.ValueOf(slice).Index(sp - 1), nil
+}
+
+func genericPop(slicePtr interface{}, ptr *int) (interface{}, error) {
+	if *ptr == 0 {
+		return nil, ErrorUnderflow
+	}
+
+	sl := reflect.ValueOf(slicePtr)
+	slv := reflect.Indirect(sl)
+
+	*ptr -= 1
+	val := slv.Index(*ptr).Interface()
+
+	return val, nil
 }

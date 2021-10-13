@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 )
 
@@ -12,7 +13,6 @@ type ProgramBuilder struct {
 	constantPool []Value
 
 	reservedConstantIndices map[string]uint32
-	reservedConstantKinds   map[string]Kind
 
 	buffer bytes.Buffer
 }
@@ -21,7 +21,6 @@ func NewProgramBuilder() *ProgramBuilder {
 	b := &ProgramBuilder{
 		constantPool:            make([]Value, 0),
 		reservedConstantIndices: make(map[string]uint32),
-		reservedConstantKinds:   make(map[string]Kind),
 		buffer:                  bytes.Buffer{},
 	}
 
@@ -29,24 +28,17 @@ func NewProgramBuilder() *ProgramBuilder {
 }
 
 func (b *ProgramBuilder) AddConstant(v Value) uint32 {
-	for k, v2 := range b.constantPool {
-		if v == v2 {
-			return uint32(k)
-		}
-	}
-
 	b.constantPool = append(b.constantPool, v)
 	return uint32(len(b.constantPool) - 1)
 }
 
-func (b *ProgramBuilder) ReserveConstant(name string, kind Kind) uint32 {
+func (b *ProgramBuilder) ReserveConstant(name string) uint32 {
 	if existingIdx, ok := b.reservedConstantIndices[name]; ok {
 		return existingIdx
 	} else {
-		idx := b.AddConstant(ZeroValue(kind))
+		idx := b.AddConstant(MakeValue(nil))
 
 		b.reservedConstantIndices[name] = idx
-		b.reservedConstantKinds[name] = kind
 
 		return idx
 	}
@@ -56,20 +48,8 @@ func (b *ProgramBuilder) emitGeneric(v interface{}) { binary.Write(&b.buffer, bi
 func (b *ProgramBuilder) emitBytes(v []byte)        { b.buffer.Write(v) }
 func (b *ProgramBuilder) EmitByte(v byte)           { b.buffer.WriteByte(v) }
 
-func (b *ProgramBuilder) EmitLoad(index uint32, kind Kind) {
-	switch kind {
-	case KindNumber:
-		b.EmitByte(OpNLOAD)
-		break
-	case KindBool:
-		b.EmitByte(OpBLOAD)
-		break
-	case KindString:
-		b.EmitByte(OpSTRLOAD)
-		break
-	default:
-		return
-	}
+func (b *ProgramBuilder) EmitCLoad(index uint32) {
+	b.EmitByte(OpCLOAD)
 	b.emitGeneric(index)
 }
 
@@ -95,7 +75,7 @@ func (b *ProgramBuilder) EmitConst(v Value) {
 		}
 		break
 	case KindString:
-		b.EmitLoad(b.AddConstant(v), KindString)
+		b.EmitCLoad(b.AddConstant(v))
 		break
 	}
 }
@@ -106,7 +86,21 @@ type BuiltProgram struct {
 	constantPool []Value
 
 	reservedConstantIndices map[string]uint32
-	reservedConstantKinds   map[string]Kind
+}
+
+func (b BuiltProgram) GobEncode() ([]byte, error) {
+	return b.Serialize()
+}
+
+func (b *BuiltProgram) GobDecode(data []byte) error {
+	if b2, err := DeserializeBuiltProgram(bufio.NewReader(bytes.NewReader(data))); err != nil {
+		return err
+	} else {
+		b.program = b2.program
+		b.constantPool = b2.constantPool
+		b.reservedConstantIndices = b2.reservedConstantIndices
+		return nil
+	}
 }
 
 func (b BuiltProgram) Serialize() (buf []byte, err error) {
@@ -135,9 +129,6 @@ func (b BuiltProgram) Serialize() (buf []byte, err error) {
 		if err = binary.Write(&buffer, binary.LittleEndian, v); err != nil {
 			return
 		}
-		if err = binary.Write(&buffer, binary.LittleEndian, uint16(b.reservedConstantKinds[k])); err != nil {
-			return
-		}
 	}
 
 	buf = buffer.Bytes()
@@ -150,7 +141,6 @@ func DeserializeBuiltProgram(reader *bufio.Reader) (b BuiltProgram, err error) {
 		program:                 nil,
 		constantPool:            nil,
 		reservedConstantIndices: make(map[string]uint32),
-		reservedConstantKinds:   make(map[string]Kind),
 	}
 
 	var progLen uint32
@@ -184,7 +174,6 @@ func DeserializeBuiltProgram(reader *bufio.Reader) (b BuiltProgram, err error) {
 		var keyLength uint32
 		var keyBuffer []byte
 		var index uint32
-		var kind uint16
 
 		if err = binary.Read(reader, binary.LittleEndian, &keyLength); err != nil {
 			return
@@ -199,13 +188,7 @@ func DeserializeBuiltProgram(reader *bufio.Reader) (b BuiltProgram, err error) {
 			return
 		}
 
-		if err = binary.Read(reader, binary.LittleEndian, &kind); err != nil {
-			return
-		}
-
 		b.reservedConstantIndices[string(keyBuffer)] = index
-		b.reservedConstantKinds[string(keyBuffer)] = Kind(kind)
-
 	}
 
 	return
@@ -216,13 +199,11 @@ func (b *ProgramBuilder) Build() BuiltProgram {
 		program:                 b.buffer.Bytes(),
 		constantPool:            b.constantPool,
 		reservedConstantIndices: b.reservedConstantIndices,
-		reservedConstantKinds:   b.reservedConstantKinds,
 	}
 
 	b.buffer = bytes.Buffer{}
 	b.constantPool = make([]Value, 0)
 	b.reservedConstantIndices = make(map[string]uint32)
-	b.reservedConstantKinds = make(map[string]Kind)
 
 	return b2
 }
@@ -238,19 +219,13 @@ func (b BuiltProgram) Link(m map[string]interface{}) (p Program, err error) {
 		Constants: b.constantPool,
 	}
 
-	for key, kind := range b.reservedConstantKinds {
+	for key, index := range b.reservedConstantIndices {
 		if v, ok := m[key]; !ok {
-			if err = errors.New("missing constant in constant mapping"); err != nil {
+			if err = errors.New(fmt.Sprint("missing constant in constant mapping with key: ", key)); err != nil {
 				return
 			}
 		} else {
-			val := MakeValue(v)
-			if val.Kind != kind {
-				if err = errors.New("bad given type in constant mapping"); err != nil {
-					return
-				}
-			}
-			b.constantPool[b.reservedConstantIndices[key]] = MakeValue(v)
+			b.constantPool[index] = MakeValue(v)
 		}
 	}
 

@@ -60,10 +60,10 @@ func getDefaultProgram() (b BuiltProgram, err error) {
 	builder := NewProgramBuilder()
 
 	if err = CompileFORTH(builder, `
-CNUM_const0 1 CMP >=
-CNUM_const0 3 CMP <=
+CNAMED_const0 1 CMP >=
+CNAMED_const0 3 CMP <=
 AND
-"asdasdasd" CSTR_const1 CMP ==
+"asdasdasd" CNAMED_const1 CMP ==
 OR
 HLT
 `); err != nil {

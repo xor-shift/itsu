@@ -29,28 +29,27 @@ func CompileFORTH(builder *ProgramBuilder, str string) error {
 		"OVER": OpSOVER,
 		"ROT":  OpSROT,
 
-		"CMP":    OpNCMP,
-		"STRCMP": OpSCMP,
-		"LT":     OpLT,
-		"LE":     OpLE,
-		"EQ":     OpEQ,
-		"GE":     OpGE,
-		"GT":     OpGT,
-		"NE":     OpNE,
-		"<":      OpLT,
-		"<=":     OpLE,
-		"==":     OpEQ,
-		">=":     OpGE,
-		">":      OpGT,
-		"!=":     OpNE,
-		"AND":    OpLAND,
-		"OR":     OpLOR,
-		"XOR":    OpLXOR,
-		"NOT":    OpLNOT,
-		"&&":     OpLAND,
-		"||":     OpLOR,
-		"^^":     OpLXOR,
-		"!":      OpLNOT,
+		"CMP": OpCMP,
+		"LT":  OpLT,
+		"LE":  OpLE,
+		"EQ":  OpEQ,
+		"GE":  OpGE,
+		"GT":  OpGT,
+		"NE":  OpNE,
+		"<":   OpLT,
+		"<=":  OpLE,
+		"==":  OpEQ,
+		">=":  OpGE,
+		">":   OpGT,
+		"!=":  OpNE,
+		"AND": OpLAND,
+		"OR":  OpLOR,
+		"XOR": OpLXOR,
+		"NOT": OpLNOT,
+		"&&":  OpLAND,
+		"||":  OpLOR,
+		"^^":  OpLXOR,
+		"!":   OpLNOT,
 
 		"ADD":  OpNADD,
 		"SUB":  OpNSUB,
@@ -143,7 +142,7 @@ func CompileFORTH(builder *ProgramBuilder, str string) error {
 			}
 
 			idx := builder.AddConstant(MakeValue(strings.TrimSuffix(strings.TrimPrefix(s, "\""), "\"")))
-			builder.EmitLoad(idx, KindString)
+			builder.EmitCLoad(idx)
 
 			return true
 		}, func(s string) bool {
@@ -173,38 +172,22 @@ func CompileFORTH(builder *ProgramBuilder, str string) error {
 			if base, index, valid := parseIndexed(s); !valid {
 				return false
 			} else {
-				switch base {
-				case "NLOAD":
-					builder.EmitLoad(index, KindNumber)
-					break
-				case "BLOAD":
-					builder.EmitLoad(index, KindBool)
-					break
-				case "STRLOAD":
-					builder.EmitLoad(index, KindString)
-					break
-				default:
+				if base != "CLOAD" {
 					return false
 				}
+
+				builder.EmitCLoad(index)
 				return true
 			}
 		}, func(s string) bool {
-			if lhs, rhs, valid := parseSplit(s); !valid {
+			if base, rhs, valid := parseSplit(s); !valid {
 				return false
 			} else {
-				switch lhs {
-				case "CNUM":
-					builder.EmitLoad(builder.ReserveConstant(rhs, KindNumber), KindNumber)
-					break
-				case "CBOOL":
-					builder.EmitLoad(builder.ReserveConstant(rhs, KindBool), KindBool)
-					break
-				case "CSTR":
-					builder.EmitLoad(builder.ReserveConstant(rhs, KindString), KindString)
-					break
-				default:
+				if base != "CNAMED" {
 					return false
 				}
+
+				builder.EmitCLoad(builder.ReserveConstant(rhs))
 				return true
 			}
 		},
