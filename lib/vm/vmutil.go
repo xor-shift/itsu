@@ -68,7 +68,7 @@ func (vm *VM) PopKind(kind Kind) (v Value, err error) {
 	return
 }
 
-//returns the second and the first element on the stack in order
+//Pop2 returns the second and the first element on the stack in order
 func (vm *VM) Pop2() (lhs, rhs Value, err error) {
 	if lhs, err = vm.Pop(); err != nil {
 		return
@@ -154,7 +154,7 @@ func (vm *VM) LoadConstant(idx uint32) error {
 	}
 }
 
-//JumpGenericfunc types are: jmp, jmpt, jmpf, call
+//JumpGeneric types are: jmp, jmpt, jmpf, call
 func (vm *VM) JumpGeneric(to uint32, typ uint8) (err error) {
 	doJmp := false
 

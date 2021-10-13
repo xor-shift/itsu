@@ -32,7 +32,7 @@ func makeIndex(index uint64) ([]byte, uint8) {
 	return buf, iType
 }
 
-func tokenizeString(str string) []string {
+func TokenizeString(str string) []string {
 	const (
 		stateInit          = 0
 		stateReadingAtom   = 1

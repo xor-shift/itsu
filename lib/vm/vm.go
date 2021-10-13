@@ -68,17 +68,15 @@ func (vm *VM) SingleStep() (err error) {
 		return
 	}
 
-	argReader := bytes.NewReader(argBytes)
-
 	index := uint32(0)
 	number := float64(0)
 
 	if argSize := GetOpcodeProperties(opcode).ArgSize; argSize == 4 {
-		if err = binary.Read(argReader, binary.LittleEndian, &index); err != nil {
+		if err = binary.Read(bytes.NewReader(argBytes), binary.LittleEndian, &index); err != nil {
 			return
 		}
 	} else if argSize == 8 {
-		if err = binary.Read(argReader, binary.LittleEndian, &number); err != nil {
+		if err = binary.Read(bytes.NewReader(argBytes), binary.LittleEndian, &number); err != nil {
 			return
 		}
 	}
@@ -120,6 +118,13 @@ func (vm *VM) SingleStep() (err error) {
 		},
 		OpCLOAD: func() error { return vm.LoadConstant(index) },
 		OpLOAD:  func() error { return vm.LoadVariable(index) },
+		OpSTORE: func() error {
+			if v, err := vm.Pop(); err != nil {
+				return err
+			} else {
+				return vm.StoreVariable(index, v)
+			}
+		},
 
 		OpSDUP: func() error {
 			if vm.sp < 1 {
@@ -298,6 +303,20 @@ func (vm *VM) SingleStep() (err error) {
 				return vm.JumpGeneric(uint32(idxVal.Data.(float64)), opcode-OpJMP)
 			}
 		},
+		OpDCALL: func() error {
+			if target, err := vm.Pop(); err != nil {
+				return err
+			} else {
+				if target.Kind == KindNumber {
+					return vm.JumpGeneric(uint32(target.Data.(float64)), opcode-OpJMP)
+				} else if target.Kind == KindString {
+
+				} else {
+					return ErrorType
+				}
+			}
+			return nil
+		},
 		OpRET: func() error { return vm.Return() },
 	}
 
@@ -311,7 +330,6 @@ func (vm *VM) SingleStep() (err error) {
 		OpCALL:     OpJMP,
 		OpDJMPT:    OpDJMP,
 		OpDJMPF:    OpDJMP,
-		OpDCALL:    OpDJMP,
 		OpLE:       OpLT,
 		OpEQ:       OpLT,
 		OpGE:       OpLT,

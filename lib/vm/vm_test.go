@@ -3,6 +3,7 @@ package vm
 import (
 	"bufio"
 	"bytes"
+	"example.com/itsuMain/lib/vm/itsu_forth"
 	"fmt"
 	"log"
 	"reflect"
@@ -42,7 +43,7 @@ func TestTokenizeString(t *testing.T) {
 	}
 
 	for k, v := range strs {
-		r := tokenizeString(v)
+		r := TokenizeString(v)
 
 		if len(tokens[k]) == len(r) {
 			for k2, v2 := range r {
@@ -59,7 +60,7 @@ func TestTokenizeString(t *testing.T) {
 func getDefaultProgram() (b BuiltProgram, err error) {
 	builder := NewProgramBuilder()
 
-	if err = CompileFORTH(builder, `
+	if err = itsu_forth.CompileFORTH(builder, `
 CNAMED_const0 1 CMP >=
 CNAMED_const0 3 CMP <=
 AND

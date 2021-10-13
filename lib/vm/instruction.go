@@ -280,6 +280,8 @@ func GetOpcodeProperties(opcode byte) OpcodeProperties {
 		OpBCONST_0: {0, "BCONST_0", false},
 		OpBCONST_1: {0, "BCONST_1", false},
 		OpCLOAD:    {4, "CLOAD", true},
+		OpLOAD:     {4, "LOAD", true},
+		OpSTORE:    {4, "STORE", true},
 		OpNILCONST: {0, "NILCONST", false},
 		OpISNIL:    {0, "ISNIL", false},
 		OpKIND:     {0, "KIND", false},

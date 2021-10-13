@@ -4,6 +4,7 @@ import (
 	"example.com/itsuMain/lib/message"
 	"example.com/itsuMain/lib/util"
 	"example.com/itsuMain/lib/vm"
+	"example.com/itsuMain/lib/vm/itsu_forth"
 	"fmt"
 	g "github.com/AllenDang/giu"
 	"image"
@@ -211,7 +212,7 @@ func guiProxyConditions() g.Layout {
 
 			builder := vm.NewProgramBuilder()
 
-			if lastCompileError = vm.CompileFORTH(builder, conditionEditor.GetText()); lastCompileError != nil {
+			if lastCompileError = itsu_forth.CompileFORTH(builder, conditionEditor.GetText()); lastCompileError != nil {
 				lastCompilerErrorDate = time.Now()
 				return
 			}

@@ -1,80 +1,81 @@
-package vm
+package itsu_forth
 
 import (
 	"errors"
+	"example.com/itsuMain/lib/vm"
 	"strconv"
 	"strings"
 )
 
-func CompileFORTH(builder *ProgramBuilder, str string) error {
+func CompileFORTH(builder *vm.ProgramBuilder, str string) error {
 	//builder := NewProgramBuilder()
-	tokens := tokenizeString(str)
+	tokens := vm.TokenizeString(str)
 
 	singleByteTokens := map[string]byte{
-		"0":     OpNCONST_0,
-		"1":     OpNCONST_1,
-		"2":     OpNCONST_2,
-		"false": OpBCONST_0,
-		"true":  OpBCONST_1,
-		"F":     OpBCONST_0,
-		"T":     OpBCONST_1,
+		"0":     vm.OpNCONST_0,
+		"1":     vm.OpNCONST_1,
+		"2":     vm.OpNCONST_2,
+		"false": vm.OpBCONST_0,
+		"true":  vm.OpBCONST_1,
+		"F":     vm.OpBCONST_0,
+		"T":     vm.OpBCONST_1,
 
-		"NIL":   OpNILCONST,
-		"ISNIL": OpISNIL,
-		"KIND":  OpKIND,
+		"NIL":   vm.OpNILCONST,
+		"ISNIL": vm.OpISNIL,
+		"KIND":  vm.OpKIND,
 
-		"DUP":  OpSDUP,
-		"DROP": OpSDROP,
-		"SWAP": OpSSWAP,
-		"OVER": OpSOVER,
-		"ROT":  OpSROT,
+		"DUP":  vm.OpSDUP,
+		"DROP": vm.OpSDROP,
+		"SWAP": vm.OpSSWAP,
+		"OVER": vm.OpSOVER,
+		"ROT":  vm.OpSROT,
 
-		"CMP": OpCMP,
-		"LT":  OpLT,
-		"LE":  OpLE,
-		"EQ":  OpEQ,
-		"GE":  OpGE,
-		"GT":  OpGT,
-		"NE":  OpNE,
-		"<":   OpLT,
-		"<=":  OpLE,
-		"==":  OpEQ,
-		">=":  OpGE,
-		">":   OpGT,
-		"!=":  OpNE,
-		"AND": OpLAND,
-		"OR":  OpLOR,
-		"XOR": OpLXOR,
-		"NOT": OpLNOT,
-		"&&":  OpLAND,
-		"||":  OpLOR,
-		"^^":  OpLXOR,
-		"!":   OpLNOT,
+		"CMP": vm.OpCMP,
+		"LT":  vm.OpLT,
+		"LE":  vm.OpLE,
+		"EQ":  vm.OpEQ,
+		"GE":  vm.OpGE,
+		"GT":  vm.OpGT,
+		"NE":  vm.OpNE,
+		"<":   vm.OpLT,
+		"<=":  vm.OpLE,
+		"==":  vm.OpEQ,
+		">=":  vm.OpGE,
+		">":   vm.OpGT,
+		"!=":  vm.OpNE,
+		"AND": vm.OpLAND,
+		"OR":  vm.OpLOR,
+		"XOR": vm.OpLXOR,
+		"NOT": vm.OpLNOT,
+		"&&":  vm.OpLAND,
+		"||":  vm.OpLOR,
+		"^^":  vm.OpLXOR,
+		"!":   vm.OpLNOT,
 
-		"ADD":  OpNADD,
-		"SUB":  OpNSUB,
-		"MUL":  OpNMUL,
-		"DIV":  OpNDIV,
-		"FMOD": OpNFMOD,
-		"+":    OpNADD,
-		"-":    OpNSUB,
-		"*":    OpNMUL,
-		"/":    OpNDIV,
-		".%":   OpNFMOD,
-		"POW":  OpNPOW,
-		"^":    OpNPOW,
-		"**":   OpNPOW,
+		"ADD":  vm.OpNADD,
+		"SUB":  vm.OpNSUB,
+		"MUL":  vm.OpNMUL,
+		"DIV":  vm.OpNDIV,
+		"FMOD": vm.OpNFMOD,
+		"+":    vm.OpNADD,
+		"-":    vm.OpNSUB,
+		"*":    vm.OpNMUL,
+		"/":    vm.OpNDIV,
+		".%":   vm.OpNFMOD,
+		"POW":  vm.OpNPOW,
+		"^":    vm.OpNPOW,
+		"**":   vm.OpNPOW,
 
-		"SQRT":  OpNSQRT,
-		"TRUNC": OpNTRUNC,
-		"FLOOR": OpNFLOOR,
-		"CEIL":  OpNCEIL,
-		"SHL":   OpNSHL,
-		"SHR":   OpNSHR,
-		"<<":    OpNSHL,
-		">>":    OpNSHR,
+		"SQRT":  vm.OpNSQRT,
+		"TRUNC": vm.OpNTRUNC,
+		"FLOOR": vm.OpNFLOOR,
+		"CEIL":  vm.OpNCEIL,
+		"SHL":   vm.OpNSHL,
+		"SHR":   vm.OpNSHR,
+		"<<":    vm.OpNSHL,
+		">>":    vm.OpNSHR,
 
-		"HLT": OpHLT,
+		"HLT": vm.OpHLT,
 	}
 
 	parseTTBL := func(s string) (v uint8, valid bool) {
@@ -141,7 +142,7 @@ func CompileFORTH(builder *ProgramBuilder, str string) error {
 				return false
 			}
 
-			idx := builder.AddConstant(MakeValue(strings.TrimSuffix(strings.TrimPrefix(s, "\""), "\"")))
+			idx := builder.AddConstant(vm.MakeValue(strings.TrimSuffix(strings.TrimPrefix(s, "\""), "\"")))
 			builder.EmitCLoad(idx)
 
 			return true
@@ -149,14 +150,14 @@ func CompileFORTH(builder *ProgramBuilder, str string) error {
 			if v, err := strconv.ParseFloat(s, 64); err != nil {
 				return false
 			} else {
-				builder.EmitConst(MakeValue(v))
+				builder.EmitConst(vm.MakeValue(v))
 				return true
 			}
 		}, func(s string) bool {
 			if ttbl, ok := parsePrefixedTTBL(s, "LTTBLB_"); !ok {
 				return false
 			} else {
-				builder.EmitByte(OpLTTBLB)
+				builder.EmitByte(vm.OpLTTBLB)
 				builder.EmitByte(ttbl)
 				return true
 			}
@@ -164,7 +165,7 @@ func CompileFORTH(builder *ProgramBuilder, str string) error {
 			if ttbl, ok := parsePrefixedTTBL(s, "LTTBLU_"); !ok {
 				return false
 			} else {
-				builder.EmitByte(OpLTTBLU)
+				builder.EmitByte(vm.OpLTTBLU)
 				builder.EmitByte(ttbl)
 				return true
 			}
