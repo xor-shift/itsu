@@ -56,10 +56,10 @@ func TestTokenizeString(t *testing.T) {
 	}
 }
 
-func TestCompile(t *testing.T) {
+func getDefaultProgram() (b BuiltProgram, err error) {
 	builder := NewProgramBuilder()
 
-	if err := CompileFORTH(builder, `
+	if err = CompileFORTH(builder, `
 CNUM_const0 1 CMP >=
 CNUM_const0 3 CMP <=
 AND
@@ -67,11 +67,22 @@ AND
 OR
 HLT
 `); err != nil {
+		return
+	}
+
+	b = builder.Build()
+	return
+}
+
+func TestCompile(t *testing.T) {
+	var err error
+	var built BuiltProgram
+
+	if built, err = getDefaultProgram(); err != nil {
 		t.Error(err)
 		return
 	}
 
-	built := builder.Build()
 	if linked, err := built.Link(map[string]interface{}{
 		"const0": 1.5,
 		"const1": "asdasd asd",
@@ -120,5 +131,29 @@ func TestDeserializeValue(t *testing.T) {
 			t.Error(fmt.Sprint("test ", k, " failed: ", dv))
 		}
 	}
+}
 
+func TestBuiltProgram_Serialize(t *testing.T) {
+	var err error
+	var built BuiltProgram
+
+	if built, err = getDefaultProgram(); err != nil {
+		t.Error(err)
+		return
+	}
+
+	var built2 BuiltProgram
+	var serialized []byte
+
+	if serialized, err = built.Serialize(); err != nil {
+		return
+	}
+
+	if built2, err = DeserializeBuiltProgram(bufio.NewReader(bytes.NewReader(serialized))); err != nil {
+		return
+	}
+
+	if !reflect.DeepEqual(built, built2) {
+		t.Error("")
+	}
 }
