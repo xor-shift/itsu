@@ -19,6 +19,10 @@ func CompileFORTH(builder *ProgramBuilder, str string) error {
 		"F":     OpBCONST_0,
 		"T":     OpBCONST_1,
 
+		"NIL":   OpNILCONST,
+		"ISNIL": OpISNIL,
+		"KIND":  OpKIND,
+
 		"DUP":  OpSDUP,
 		"DROP": OpSDROP,
 		"SWAP": OpSSWAP,
@@ -138,15 +142,15 @@ func CompileFORTH(builder *ProgramBuilder, str string) error {
 				return false
 			}
 
-			idx := builder.AddConstantString(strings.TrimSuffix(strings.TrimPrefix(s, "\""), "\""))
-			builder.EmitSTRLOAD(idx)
+			idx := builder.AddConstant(MakeValue(strings.TrimSuffix(strings.TrimPrefix(s, "\""), "\"")))
+			builder.EmitLoad(idx, KindString)
 
 			return true
 		}, func(s string) bool {
 			if v, err := strconv.ParseFloat(s, 64); err != nil {
 				return false
 			} else {
-				builder.EmitNCONST(v)
+				builder.EmitConst(MakeValue(v))
 				return true
 			}
 		}, func(s string) bool {
@@ -171,13 +175,13 @@ func CompileFORTH(builder *ProgramBuilder, str string) error {
 			} else {
 				switch base {
 				case "NLOAD":
-					builder.EmitNLOAD(index)
+					builder.EmitLoad(index, KindNumber)
 					break
 				case "BLOAD":
-					builder.EmitBLOAD(index)
+					builder.EmitLoad(index, KindBool)
 					break
 				case "STRLOAD":
-					builder.EmitSTRLOAD(index)
+					builder.EmitLoad(index, KindString)
 					break
 				default:
 					return false
@@ -190,13 +194,13 @@ func CompileFORTH(builder *ProgramBuilder, str string) error {
 			} else {
 				switch lhs {
 				case "CNUM":
-					builder.EmitNLOAD(builder.ReserveConstantNumber(rhs))
+					builder.EmitLoad(builder.ReserveConstant(rhs, KindNumber), KindNumber)
 					break
 				case "CBOOL":
-					builder.EmitBLOAD(builder.ReserveConstantBool(rhs))
+					builder.EmitLoad(builder.ReserveConstant(rhs, KindBool), KindBool)
 					break
 				case "CSTR":
-					builder.EmitSTRLOAD(builder.ReserveConstantString(rhs))
+					builder.EmitLoad(builder.ReserveConstant(rhs, KindString), KindString)
 					break
 				default:
 					return false

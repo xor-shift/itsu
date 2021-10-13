@@ -1,15 +1,90 @@
 package vm
 
+import "reflect"
+
 /*
 data types:
 bool, number, string
 */
 
+type Kind int
+
 const (
-	KindNumber = 0
-	KindBool   = 1
-	KindString = 2
+	KindNil    = Kind(0)
+	KindNumber = Kind(1)
+	KindBool   = Kind(2)
+	KindString = Kind(3)
 )
+
+type Value struct {
+	Data interface{}
+	Kind Kind
+}
+
+var (
+	ValueZeroNumber = Value{
+		Data: 0.,
+		Kind: KindNumber,
+	}
+	ValueZeroBool = Value{
+		Data: false,
+		Kind: KindBool,
+	}
+	ValueZeroString = Value{
+		Data: "",
+		Kind: KindString,
+	}
+	ValueNil = Value{
+		Data: nil,
+		Kind: KindNil,
+	}
+)
+
+//MakeValue constructs a Value from various data types. If nil or an unsupported type is passed, a NilValue will be generated
+func MakeValue(v interface{}) Value {
+	switch val := reflect.ValueOf(v); val.Type().Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return Value{
+			Data: float64(val.Int()),
+			Kind: KindNumber,
+		}
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return Value{
+			Data: float64(val.Uint()),
+			Kind: KindNumber,
+		}
+	case reflect.Float32, reflect.Float64:
+		return Value{
+			Data: val.Float(),
+			Kind: KindNumber,
+		}
+	case reflect.Bool:
+		return Value{
+			Data: val.Bool(),
+			Kind: KindBool,
+		}
+	case reflect.String:
+		return Value{
+			Data: val.String(),
+			Kind: KindString,
+		}
+	default:
+		return ValueNil
+	}
+}
+
+func ZeroValue(kind Kind) Value {
+	switch kind {
+	case KindNumber:
+		return ValueZeroNumber
+	case KindBool:
+		return ValueZeroBool
+	case KindString:
+		return ValueZeroString
+	default:
+		return ValueNil
+	}
+}
 
 const (
 	comparisonTypeLt  = 0
@@ -32,6 +107,10 @@ const (
 	OpNLOAD   = 0x06 //4 byte argument
 	OpBLOAD   = 0x07 //4 byte argument
 	OpSTRLOAD = 0x08 //4 byte argument
+
+	OpNILCONST = 0x09
+	OpISNIL    = 0x0A //v -- v b equivalent to: KIND NCONST_0 CMP EQ
+	OpKIND     = 0x0B //v -- v n
 )
 
 const (
@@ -75,20 +154,30 @@ const (
 )
 
 const (
-	OpHLT = 0xE0
+	OpHLT   = 0xE0
+	OpNOP   = 0xE1
+	OpJMP   = 0xE2 //4 byte argument
+	OpJMPT  = 0xE3 //4 byte argument
+	OpJMPF  = 0xE4 //4 byte argument
+	OpCALL  = 0xE5 //4 byte argument
+	OpDJMP  = 0xE6 //n --
+	OpDJMPT = 0xE7 //n --
+	OpDJMPF = 0xE8 //n --
+	OpDCALL = 0xE9 //n --
+	OpRET   = 0xEA
 )
 
 type OpcodeProperties struct {
-	ArgSize        int
-	Name           string
-	IsConstLoading bool
+	ArgSize  int
+	Name     string
+	IndexArg bool
 }
 
 var (
 	BadOpcodeProps = OpcodeProperties{
-		ArgSize:        0,
-		Name:           "[invalid opcode]",
-		IsConstLoading: false,
+		ArgSize:  0,
+		Name:     "[invalid opcode]",
+		IndexArg: false,
 	}
 )
 
@@ -103,6 +192,9 @@ func GetOpcodeProperties(opcode byte) OpcodeProperties {
 		OpNLOAD:    {4, "NLOAD", true},
 		OpBLOAD:    {4, "BLOAD", true},
 		OpSTRLOAD:  {4, "STRLOAD", true},
+		OpNILCONST: {0, "NILCONST", false},
+		OpISNIL:    {0, "ISNIL", false},
+		OpKIND:     {0, "KIND", false},
 		OpSDUP:     {0, "SDUP", false},
 		OpSDROP:    {0, "SDROP", false},
 		OpSSWAP:    {0, "SSWAP", false},
@@ -123,6 +215,17 @@ func GetOpcodeProperties(opcode byte) OpcodeProperties {
 		OpLNOT:     {0, "LNOT", false},
 		OpLTTBLU:   {0, "LTTBLU", false},
 		OpHLT:      {0, "HLT", false},
+		OpNOP:      {0, "NOP", false},
+		OpJMP:      {4, "JMP", true},
+		OpJMPT:     {4, "JMPT", true},
+		OpJMPF:     {4, "JMPF", true},
+		OpDJMP:     {0, "DJMP", false},
+		OpDJMPT:    {0, "DJMPT", false},
+		OpDJMPF:    {0, "DJMPF", false},
+		OpCALL:     {4, "CALL", true},
+		OpRET:      {0, "RET", false},
+		OpDCALL:    {0, "DCALL", false},
+		//Op: {0, "", false},
 	}
 
 	if v, ok := m[opcode]; ok {

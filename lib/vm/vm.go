@@ -11,7 +11,8 @@ import (
 )
 
 const (
-	stackSize = 64
+	stackSize     = 64
+	callStackSize = 16
 )
 
 var (
@@ -27,53 +28,45 @@ var (
 )
 
 type VM struct {
-	constants []interface{}
-
-	program []byte
+	program Program
 	pc      int
 
-	stack [stackSize]interface{}
+	stack [stackSize]Value
 	sp    int
+
+	callStack [callStackSize]uint32
+	csp       int
 
 	halt bool
 }
 
-func NewVM() *VM {
+func NewVM(program Program) *VM {
 	v := &VM{
-		constants: make([]interface{}, 0),
-		program:   nil,
-		pc:        0,
-		stack:     [stackSize]interface{}{},
-		sp:        0,
+		program: program,
+		pc:      0,
+		stack:   [stackSize]Value{ValueNil},
+		sp:      0,
 	}
 
 	return v
 }
 
-func (vm *VM) LoadFromBuilder(b *ProgramBuilder) {
-	vm.program = b.buffer.Bytes()
-	vm.constants = b.constantPool
-
-	b.constantPool = make([]interface{}, 0)
-	b.buffer = bytes.Buffer{}
-}
-
 func (vm *VM) readByte() (byte, error) {
-	if vm.pc == len(vm.program) {
+	if vm.pc == len(vm.program.Program) {
 		return 0, ErrorBadEOF
 	}
 
-	b := vm.program[vm.pc]
+	b := vm.program.Program[vm.pc]
 	return b, nil
 }
 
 func (vm *VM) readBytes(buf []byte, n int) error {
-	if vm.pc+n > len(vm.program) {
+	if vm.pc+n > len(vm.program.Program) {
 		return ErrorBadEOF
 	}
 
 	for i := 0; i < n; i++ {
-		buf[i] = vm.program[vm.pc+i]
+		buf[i] = vm.program.Program[vm.pc+i]
 	}
 
 	return nil
@@ -100,37 +93,92 @@ func (vm *VM) readInstruction() (opcode byte, argBytes []byte, err error) {
 	return
 }
 
-func (vm *VM) push(a interface{}) error {
-	if vm.sp == stackSize {
+func genericPush(slicePtr interface{}, ptr *int, v interface{}) error {
+	sl := reflect.ValueOf(slicePtr)
+	slv := reflect.Indirect(sl)
+
+	if *ptr == slv.Len() {
 		return ErrorOverflow
 	}
 
-	vm.stack[vm.sp] = a
-	vm.sp++
+	slv.Index(*ptr).Set(reflect.ValueOf(v))
+	*ptr += 1
 
 	return nil
 }
 
-func (vm *VM) top() (interface{}, error) {
-	if vm.sp == 0 {
+func genericTop(slice interface{}, sp int) (interface{}, error) {
+	if sp == 0 {
 		return nil, ErrorUnderflow
 	}
 
-	return vm.stack[vm.sp-1], nil
+	return reflect.ValueOf(slice).Index(sp - 1), nil
 }
 
-func (vm *VM) pop() (interface{}, error) {
-	if v, err := vm.top(); err != nil {
-		return nil, err
+func genericPop(slicePtr interface{}, ptr *int) (interface{}, error) {
+	if *ptr == 0 {
+		return nil, ErrorUnderflow
+	}
+
+	sl := reflect.ValueOf(slicePtr)
+	slv := reflect.Indirect(sl)
+
+	*ptr -= 1
+	val := slv.Index(*ptr).Interface()
+	slv.Index(*ptr).Set(reflect.ValueOf(nil))
+
+	return val, nil
+}
+
+func (vm *VM) Push(a Value) error { return genericPush(&vm.stack, &vm.sp, a) }
+
+func (vm *VM) Top() (Value, error) {
+	if v, err := genericTop(vm.stack, vm.sp); err != nil {
+		return ValueNil, ErrorUnderflow
 	} else {
-		vm.sp--
-		vm.stack[vm.sp] = nil
+		return v.(Value), nil
+	}
+}
+
+func (vm *VM) Pop() (Value, error) {
+	if v, err := genericPop(&vm.stack, &vm.sp); err != nil {
+		return ValueNil, ErrorUnderflow
+	} else {
+		return v.(Value), nil
+	}
+}
+
+func (vm *VM) PopKind(kind Kind) (Value, error) {
+	if v, err := vm.Pop(); err != nil {
+		return ValueNil, err
+	} else {
+		if v.Kind != kind {
+			return ValueNil, ErrorType
+		}
 		return v, nil
 	}
 }
 
+func (vm *VM) CPush(a uint32) error { return genericPush(&vm.callStack, &vm.csp, a) }
+
+func (vm *VM) CTop() (uint32, error) {
+	if v, err := genericTop(vm.callStack, vm.csp); err != nil {
+		return 0, ErrorUnderflow
+	} else {
+		return v.(uint32), nil
+	}
+}
+
+func (vm *VM) CPop() (uint32, error) {
+	if v, err := genericPop(&vm.callStack, &vm.csp); err != nil {
+		return 0, ErrorUnderflow
+	} else {
+		return v.(uint32), nil
+	}
+}
+
 func (vm *VM) SingleStep() (err error) {
-	if vm.pc == len(vm.program) {
+	if vm.pc == len(vm.program.Program) {
 		return ErrorEOF
 	} else if vm.halt {
 		return ErrorHLT
@@ -165,17 +213,20 @@ func (vm *VM) SingleStep() (err error) {
 		var lhs, rhs float64
 		var ok bool
 
-		if lhs, ok = vm.stack[vm.sp-2].(float64); !ok {
+		if lhs, ok = vm.stack[vm.sp-2].Data.(float64); !ok {
 			return ErrorType
 		}
 
-		if rhs, ok = vm.stack[vm.sp-1].(float64); !ok {
+		if rhs, ok = vm.stack[vm.sp-1].Data.(float64); !ok {
 			return ErrorType
 		}
 
 		vm.sp--
-		vm.stack[vm.sp] = nil
-		vm.stack[vm.sp-1], err = fn(lhs, rhs)
+		vm.stack[vm.sp] = ValueNil
+
+		var tData interface{}
+		tData, err = fn(lhs, rhs)
+		vm.stack[vm.sp-1] = MakeValue(tData)
 
 		return err
 	}
@@ -187,41 +238,75 @@ func (vm *VM) SingleStep() (err error) {
 
 		var v float64
 		var ok bool
-		if v, ok = vm.stack[vm.sp-1].(float64); !ok {
+		if v, ok = vm.stack[vm.sp-1].Data.(float64); !ok {
 			return ErrorType
 		}
 
-		vm.stack[vm.sp-1], err = fn(v)
+		var tData interface{}
+		tData, err = fn(v)
+		vm.stack[vm.sp-1] = MakeValue(tData)
 		return err
+	}
+
+	//types are: jmp, jmpt, jmpf, call
+	doJMPS := func(to uint32, typ uint8) (err error) {
+		doJmp := false
+
+		if typ == 0 || typ == 3 {
+			doJmp = true
+		} else {
+			if vm.sp < 1 {
+				return ErrorUnderflow
+			}
+
+			val := vm.stack[vm.sp-1]
+			if val.Kind != KindBool {
+				return ErrorType
+			}
+
+			doJmp = (typ == 1) == (val.Data.(bool) == true)
+		}
+
+		if !doJmp {
+			return nil
+		}
+
+		if typ == 3 {
+			if err = vm.CPush(uint32(vm.pc)); err != nil {
+				return
+			}
+		}
+
+		vm.sp = int(index)
+
+		return
 	}
 
 	switch opcode {
 	case OpNCONST, OpNCONST_0, OpNCONST_1, OpNCONST_2:
-		var narg float64
-
 		if opcode == OpNCONST {
-			narg = number
+			err = vm.Push(MakeValue(number))
 		} else {
-			narg = float64(opcode - OpNCONST_0)
+			err = vm.Push(MakeValue(opcode - OpNCONST_0))
 		}
 
-		if err = vm.push(narg); err != nil {
+		if err != nil {
 			return
 		}
 
 		break
 
 	case OpBCONST_0, OpBCONST_1:
-		if err = vm.push(opcode == OpBCONST_1); err != nil {
+		if err = vm.Push(MakeValue(opcode == OpBCONST_1)); err != nil {
 			return
 		}
 		break
 
 	case OpNLOAD, OpBLOAD, OpSTRLOAD:
-		loaded := vm.constants[index]
+		loaded := vm.program.Constants[index]
 
 		bad := false
-		switch loaded.(type) {
+		switch loaded.Data.(type) {
 		case float64:
 			bad = opcode != OpNLOAD
 			break
@@ -239,7 +324,35 @@ func (vm *VM) SingleStep() (err error) {
 			return ErrorType
 		}
 
-		if err = vm.push(loaded); err != nil {
+		if err = vm.Push(loaded); err != nil {
+			return
+		}
+
+		break
+
+	case OpNILCONST:
+		if err = vm.Push(ValueNil); err != nil {
+			return
+		}
+		break
+
+	case OpISNIL:
+		if vm.sp == 0 {
+			return ErrorUnderflow
+		}
+
+		if err = vm.Push(MakeValue(vm.stack[vm.sp-1].Kind == KindNil)); err != nil {
+			return
+		}
+
+		break
+
+	case OpKIND:
+		if vm.sp == 0 {
+			return ErrorUnderflow
+		}
+
+		if err = vm.Push(MakeValue(int(vm.stack[vm.sp-1].Kind))); err != nil {
 			return
 		}
 
@@ -261,8 +374,8 @@ func (vm *VM) SingleStep() (err error) {
 			return ErrorUnderflow
 		}
 
-		vm.stack[vm.sp-1] = nil
 		vm.sp--
+		vm.stack[vm.sp] = ValueNil
 		break
 
 	case OpSSWAP:
@@ -301,14 +414,13 @@ func (vm *VM) SingleStep() (err error) {
 		vLhs := vm.stack[vm.sp-2]
 		vRhs := vm.stack[vm.sp-1]
 		vm.sp -= 1
-		vm.stack[vm.sp] = nil
+		vm.stack[vm.sp] = ValueNil
 
 		if reflect.TypeOf(vLhs).Kind() != reflect.TypeOf(vRhs).Kind() {
 			return ErrorType
 		}
 
-		res := util.Spaceship(vLhs, vRhs)
-		vm.stack[vm.sp-1] = float64(res)
+		vm.stack[vm.sp-1] = MakeValue(util.Spaceship(vLhs, vRhs))
 		break
 
 	case OpLT, OpLE, OpEQ, OpGE, OpGT, OpNE:
@@ -319,7 +431,7 @@ func (vm *VM) SingleStep() (err error) {
 		sRes := float64(0)
 		bRes := false
 
-		if sRes, bRes = vm.stack[vm.sp-1].(float64); !bRes {
+		if sRes, bRes = vm.stack[vm.sp-1].Data.(float64); !bRes {
 			return ErrorType
 		}
 
@@ -331,7 +443,7 @@ func (vm *VM) SingleStep() (err error) {
 			util.MatCond(cType == comparisonTypeGt, sRes > 0) &&
 			util.MatCond(cType == comparisonTypeNeq, sRes != 0)
 
-		vm.stack[vm.sp-1] = bRes
+		vm.stack[vm.sp-1] = MakeValue(bRes)
 		break
 
 	case OpLAND, OpLOR, OpLXOR, OpLTTBLB:
@@ -359,16 +471,16 @@ func (vm *VM) SingleStep() (err error) {
 		var lhs, rhs bool
 		var ok bool
 
-		if lhs, ok = vm.stack[vm.sp-2].(bool); !ok {
+		if lhs, ok = vm.stack[vm.sp-2].Data.(bool); !ok {
 			return ErrorType
 		}
-		if rhs, ok = vm.stack[vm.sp-1].(bool); !ok {
+		if rhs, ok = vm.stack[vm.sp-1].Data.(bool); !ok {
 			return ErrorType
 		}
 
 		vm.sp--
-		vm.stack[vm.sp] = nil
-		vm.stack[vm.sp-1] = util.TTableEval(lhs, rhs, util.Relation(tTable))
+		vm.stack[vm.sp] = ValueNil
+		vm.stack[vm.sp-1] = MakeValue(util.TTableEval(lhs, rhs, util.Relation(tTable)))
 		break
 
 	case OpLNOT, OpLTTBLU:
@@ -384,16 +496,12 @@ func (vm *VM) SingleStep() (err error) {
 		}
 
 		var p, ok bool
-		if p, ok = vm.stack[vm.sp-1].(bool); !ok {
+		if p, ok = vm.stack[vm.sp-1].Data.(bool); !ok {
 			return ErrorType
 		}
 
-		vm.stack[vm.sp-1] = util.TTableEval(p, true, util.Relation(tTable))
+		vm.stack[vm.sp-1] = MakeValue(util.TTableEval(p, true, util.Relation(tTable)))
 
-		break
-
-	case OpHLT:
-		vm.halt = true
 		break
 
 	case OpNADD, OpNSUB, OpNMUL, OpNDIV, OpNFMOD, OpNPOW, OpNSHL, OpNSHR:
@@ -436,6 +544,37 @@ func (vm *VM) SingleStep() (err error) {
 		err = unaryNOp(fns[opcode])
 		break
 
+	case OpHLT:
+		vm.halt = true
+		break
+
+	case OpJMP, OpJMPT, OpJMPF, OpCALL:
+		if err = doJMPS(index, opcode-OpJMP); err != nil {
+			return
+		}
+		break
+
+	case OpDJMP, OpDJMPT, OpDJMPF, OpDCALL:
+		var idxVal Value
+		if idxVal, err = vm.PopKind(KindNumber); err != nil {
+			return
+		}
+
+		if err = doJMPS(uint32(idxVal.Data.(float64)), opcode-OpJMP); err != nil {
+			return
+		}
+		break
+
+	case OpRET:
+		var retPoint uint32
+		if retPoint, err = vm.CPop(); err != nil {
+			return
+		}
+
+		vm.pc = int(retPoint)
+
+		break
+
 	default:
 		err = ErrorBadOpcode
 		break
@@ -448,12 +587,12 @@ func (vm *VM) DumpNow() {
 	fmt.Println("---------------")
 	fmt.Printf("Halted, PC, SP: %t, %d, %d\n", vm.halt, vm.pc, vm.sp)
 	fmt.Print("Stack         : [")
-	for i := 0; i < stackSize && vm.stack[i] != nil; i++ {
+	for i := 0; i < stackSize && vm.stack[i] != ValueNil; i++ {
 		fmt.Print(vm.stack[i], " ")
 	}
 	fmt.Print("]\n")
 
-	if vm.pc == len(vm.program) {
+	if vm.pc == len(vm.program.Program) {
 		fmt.Println("vm.pc == len(vm.program)")
 		return
 	}
@@ -470,10 +609,14 @@ func (vm *VM) DumpNow() {
 
 	argSize := GetOpcodeProperties(opcode).ArgSize
 	argBytes := make([]byte, argSize)
+
+	vm.pc++
 	if err = vm.readBytes(argBytes, argSize); err != nil {
 		fmt.Println("Error while reading argument bytes:", err)
+		vm.pc--
 		return
 	}
+	vm.pc--
 
 	if argSize != 0 {
 		fmt.Println("Argument bytes:", argBytes)

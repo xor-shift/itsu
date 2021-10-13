@@ -28,38 +28,6 @@ func runVM(vm *VM) {
 	}
 }
 
-//not an actual test, lol
-func TestVM_SingleStep(t *testing.T) {
-	builder := NewProgramBuilder()
-
-	idx0 := builder.AddConstantNumber(1.5)
-	idx1 := builder.AddConstantString("asdasd asd")
-
-	builder.EmitNLOAD(idx0)
-	builder.EmitNCONST(1)
-	builder.EmitByte(OpNCMP)
-	builder.EmitByte(OpGE)
-	builder.EmitNLOAD(idx0)
-	builder.EmitNCONST(3)
-	builder.EmitByte(OpNCMP)
-	builder.EmitByte(OpGE)
-	builder.EmitByte(OpLAND)
-
-	builder.EmitSTRLOAD(builder.AddConstantString("asdasdasd"))
-	builder.EmitSTRLOAD(idx1)
-	builder.EmitByte(OpSCMP)
-	builder.EmitByte(OpEQ)
-
-	builder.EmitByte(OpLOR)
-
-	builder.EmitByte(OpHLT)
-
-	vm := NewVM()
-	vm.LoadFromBuilder(builder)
-
-	runVM(vm)
-}
-
 func TestTokenizeString(t *testing.T) {
 	strs := []string{
 		"test 123 \"asdasdsad asdasd\" asd\"asd asd",
@@ -87,27 +55,28 @@ func TestTokenizeString(t *testing.T) {
 func TestCompile(t *testing.T) {
 	builder := NewProgramBuilder()
 
-	constants := map[string]interface{}{
+	if err := CompileFORTH(builder, `
+CNUM_const0 1 CMP >=
+CNUM_const0 3 CMP <=
+AND
+"asdasdasd" CSTR_const1 CMP ==
+OR
+HLT
+`); err != nil {
+		t.Error(err)
+		return
+	}
+
+	built := builder.Build()
+	if linked, err := built.Link(map[string]interface{}{
 		"const0": 1.5,
 		"const1": "asdasd asd",
-	}
-
-	if err := CompileFORTH(builder, ""+
-		"CNUM_const0 1 CMP >= "+
-		"CNUM_const0 3 CMP <= AND "+
-		"\"asdasdasd\" CSTR_const1 CMP == OR "+
-		"HLT"); err != nil {
+	}); err != nil {
 		t.Error(err)
 		return
+	} else {
+		vm := NewVM(linked)
+
+		runVM(vm)
 	}
-
-	if err := builder.MapConstants(constants); err != nil {
-		t.Error(err)
-		return
-	}
-
-	vm := NewVM()
-	vm.LoadFromBuilder(builder)
-
-	runVM(vm)
 }

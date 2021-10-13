@@ -7,132 +7,147 @@ import (
 )
 
 type ProgramBuilder struct {
-	constantPool []interface{}
+	constantPool []Value
 
 	reservedConstantIndices map[string]uint32
-	reservedConstantKinds   map[string]int
+	reservedConstantKinds   map[string]Kind
 
 	buffer bytes.Buffer
 }
 
 func NewProgramBuilder() *ProgramBuilder {
 	b := &ProgramBuilder{
-		constantPool:            make([]interface{}, 0),
+		constantPool:            make([]Value, 0),
 		reservedConstantIndices: make(map[string]uint32),
-		reservedConstantKinds:   make(map[string]int),
+		reservedConstantKinds:   make(map[string]Kind),
 		buffer:                  bytes.Buffer{},
 	}
 
 	return b
 }
 
-func (b *ProgramBuilder) addConstantGeneric(v interface{}) uint32 {
+func (b *ProgramBuilder) AddConstant(v Value) uint32 {
+	for k, v2 := range b.constantPool {
+		if v == v2 {
+			return uint32(k)
+		}
+	}
+
 	b.constantPool = append(b.constantPool, v)
 	return uint32(len(b.constantPool) - 1)
 }
 
-func (b *ProgramBuilder) AddConstantNumber(v float64) uint32 { return b.addConstantGeneric(v) }
-func (b *ProgramBuilder) AddConstantString(v string) uint32  { return b.addConstantGeneric(v) }
-func (b *ProgramBuilder) AddConstantBool(v bool) uint32      { return b.addConstantGeneric(v) }
+func (b *ProgramBuilder) ReserveConstant(name string, kind Kind) uint32 {
+	if existingIdx, ok := b.reservedConstantIndices[name]; ok {
+		return existingIdx
+	} else {
+		idx := b.AddConstant(ZeroValue(kind))
 
-func (b *ProgramBuilder) reserveConstantGeneric(name string, kind int) uint32 {
-	var idx uint32
+		b.reservedConstantIndices[name] = idx
+		b.reservedConstantKinds[name] = kind
 
-	switch kind {
-	case KindNumber:
-		idx = b.AddConstantNumber(0)
-		break
-	case KindBool:
-		idx = b.AddConstantBool(false)
-		break
-	case KindString:
-		idx = b.AddConstantString("")
-		break
-	default:
-		panic("bad kind")
+		return idx
 	}
-
-	b.reservedConstantKinds[name] = kind
-	b.reservedConstantIndices[name] = idx
-
-	return idx
-}
-
-func (b *ProgramBuilder) ReserveConstantNumber(name string) uint32 {
-	return b.reserveConstantGeneric(name, KindNumber)
-}
-func (b *ProgramBuilder) ReserveConstantBool(name string) uint32 {
-	return b.reserveConstantGeneric(name, KindBool)
-}
-func (b *ProgramBuilder) ReserveConstantString(name string) uint32 {
-	return b.reserveConstantGeneric(name, KindString)
 }
 
 func (b *ProgramBuilder) emitGeneric(v interface{}) { binary.Write(&b.buffer, binary.LittleEndian, v) }
 func (b *ProgramBuilder) emitBytes(v []byte)        { b.buffer.Write(v) }
 func (b *ProgramBuilder) EmitByte(v byte)           { b.buffer.WriteByte(v) }
 
-func (b *ProgramBuilder) EmitNCONST(v float64) {
-	switch v {
-	case 0.:
-		b.EmitByte(OpNCONST_0)
+func (b *ProgramBuilder) EmitLoad(index uint32, kind Kind) {
+	switch kind {
+	case KindNumber:
+		b.EmitByte(OpNLOAD)
 		break
-	case 1.:
-		b.EmitByte(OpNCONST_1)
+	case KindBool:
+		b.EmitByte(OpBLOAD)
 		break
-	case 2.:
-		b.EmitByte(OpNCONST_2)
+	case KindString:
+		b.EmitByte(OpSTRLOAD)
 		break
 	default:
-		b.EmitByte(OpNCONST)
-		b.emitGeneric(v)
-		break
+		return
 	}
-}
-
-func (b *ProgramBuilder) EmitBCONST(v bool) {
-	if v {
-		b.EmitByte(OpBCONST_1)
-	} else {
-		b.EmitByte(OpBCONST_0)
-	}
-}
-
-func (b *ProgramBuilder) emitLoadGeneric(index uint32, opcode uint8) {
-	b.EmitByte(opcode)
 	b.emitGeneric(index)
 }
 
-func (b *ProgramBuilder) EmitNLOAD(index uint32)   { b.emitLoadGeneric(index, OpNLOAD) }
-func (b *ProgramBuilder) EmitBLOAD(index uint32)   { b.emitLoadGeneric(index, OpBLOAD) }
-func (b *ProgramBuilder) EmitSTRLOAD(index uint32) { b.emitLoadGeneric(index, OpSTRLOAD) }
+func (b *ProgramBuilder) EmitConst(v Value) {
+	switch v.Kind {
+	case KindNumber:
+		if n := v.Data.(float64); n == 0. {
+			b.EmitByte(OpNCONST_0)
+		} else if n == 1. {
+			b.EmitByte(OpNCONST_1)
+		} else if n == 2. {
+			b.EmitByte(OpNCONST_2)
+		} else {
+			b.EmitByte(OpNCONST)
+			b.emitGeneric(n)
+		}
+		break
+	case KindBool:
+		if v.Data.(bool) {
+			b.EmitByte(OpBCONST_1)
+		} else {
+			b.EmitByte(OpBCONST_0)
+		}
+		break
+	case KindString:
+		b.EmitLoad(b.AddConstant(v), KindString)
+		break
+	}
+}
 
-func (b *ProgramBuilder) MapConstants(m map[string]interface{}) (err error) {
+type BuiltProgram struct {
+	program []byte
+
+	constantPool []Value
+
+	reservedConstantIndices map[string]uint32
+	reservedConstantKinds   map[string]Kind
+}
+
+func (b *ProgramBuilder) Build() BuiltProgram {
+	b2 := BuiltProgram{
+		program:                 b.buffer.Bytes(),
+		constantPool:            b.constantPool,
+		reservedConstantIndices: b.reservedConstantIndices,
+		reservedConstantKinds:   b.reservedConstantKinds,
+	}
+
+	b.buffer = bytes.Buffer{}
+	b.constantPool = make([]Value, 0)
+	b.reservedConstantIndices = make(map[string]uint32)
+	b.reservedConstantKinds = make(map[string]Kind)
+
+	return b2
+}
+
+type Program struct {
+	Program   []byte
+	Constants []Value
+}
+
+func (b BuiltProgram) Link(m map[string]interface{}) (p Program, err error) {
+	p = Program{
+		Program:   b.program,
+		Constants: b.constantPool,
+	}
+
 	for key, kind := range b.reservedConstantKinds {
-		var v interface{}
-		var ok, tok bool
-
-		v, ok = m[key]
-
-		switch kind {
-		case KindNumber:
-			_, tok = v.(float64)
-			break
-		case KindBool:
-			_, tok = v.(bool)
-			break
-		case KindString:
-			_, tok = v.(string)
-			break
+		if v, ok := m[key]; !ok {
+			if err = errors.New("missing constant in constant mapping"); err != nil {
+				return
+			}
+		} else {
+			val := MakeValue(v)
+			if val.Kind != kind {
+				if err = errors.New("bad given type in constant mapping"); err != nil {
+					return
+				}
+			}
+			b.constantPool[b.reservedConstantIndices[key]] = MakeValue(v)
 		}
-
-		if !ok {
-			err = errors.New("missing constant in constant mapping")
-		} else if !tok {
-			err = errors.New("bad constant type in constant mapping")
-		}
-
-		b.constantPool[b.reservedConstantIndices[key]] = v
 	}
 
 	return
